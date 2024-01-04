@@ -1,0 +1,482 @@
+
+<!-- S T Y L E    C H O I C E S
+    -   Import Roboto Mono font from Google as a replacement of Helvetica
+ -->
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@200&display=swap');
+    body{
+        margin:0;
+    }
+    .Canvas-Wrapper{
+        width: 90%;
+        height: 90%;
+        border-radius:30px;
+        background-color: rgba(0,0,0,.15);
+        padding: 20px 35px 20px 20px;
+    }
+</style>
+
+<!-- I M P O R T S
+    -   Import Chart.js
+    -   Import PolyLib.js which is necessary for displaying the polynomial functions in the chart
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.min.js"></script>
+<script src="https://iason2ctrl.pythonanywhere.com/static/js/PolyLib.js"></script>
+
+
+<!-- I N I T I A L I Z E    H T M L    C A N V A S    A N D    W R A P P E R
+-->
+<div class='Canvas-Wrapper'>
+    <canvas id="myChart"></canvas>
+</div>
+
+
+<!-- C H A R T . J S    C O D E
+-->
+<script>
+    /*
+      D E C L A R A T I O N    O F    G L O B A L    V A R I A B L E S
+    */
+    var universalXarray = []
+
+    /*
+      C H A R T . J S    P L U G I N S
+    */
+    Chart.pluginService.register({
+        beforeInit: function(chart) {
+            var data = chart.config.data;
+            for (var i = 0; i < data.datasets.length; i++) {
+                for (var j = 0; j < data.labels.length; j++) {
+                    if (data.datasets[i].function){
+                        const label = data.labels[j]
+                        if (label>9 && label<14){
+                            var fct = data.datasets[i].function,
+                                x=data.labels[j],
+                                y = fct(x);
+                            data.datasets[i].data.push(y);
+                        }
+                        else {
+                            data.datasets[i].data.push(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+
+
+    Chart.pluginService.register({
+        beforeUpdate: function(chart) {
+            var data = chart.config.data;
+            for (var i = 0; i < data.datasets.length; i++) {
+                for (var j = 0; j < data.labels.length; j++) {
+                    if (data.datasets[i].function){
+                        const label = data.labels[j]
+                        if (label>9 && label<14){
+                            var fct = data.datasets[i].function,
+                                x=data.labels[j],
+                                y = fct(x);
+                            data.datasets[i].data.push(y);
+                        }
+                        else {
+                            data.datasets[i].data.push(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+
+
+
+    /*
+      I M P O R T A N T    H E L P E R    F U N C T I O N S
+    */
+
+
+    /* Takes the time array, the left and right integration bounds as well as the optimal parameter list and returns the y array
+    * corresponding to the fit values calculated in the integration bounds. Makes use of the PolyLib.js library. The parameter list
+    * (I think) has to be inverted before giving it as input to this function, because the Python-Fitting script and the PolyLib.js
+    * library use different ordering conventions. */
+    function PolynomialUpdateFunction(DomainValue,aStar,bStar,poptList){
+        if (DomainValue>aStar && DomainValue<bStar){
+            const x = DomainValue
+            const poly = new Poly(poptList)
+            return poly.eval(x).valueOf()
+        }
+    }
+
+    /* Takes the time array, the left and right integration bounds as well as the optimal parameter list and returns the y array
+   * corresponding to the fit values calculated in the integration bounds.*/
+    function CosineUpdateFunction(DomainValue,aStar,bStar,poptList){
+        if (DomainValue>aStar && DomainValue<bStar){
+            const x = DomainValue
+            const [a,b,c,d] = poptList
+            return (+a)*Math.cos((+b)*x+(+c))+(+d)
+        }
+    }
+
+    /* Takes the time array, the left and right integration bounds as well as the optimal parameter list and returns the y array
+    * corresponding to the fit values calculated in the integration bounds.*/
+    function GaussianUpdateFunction(DomainValue,aStar,bStar,poptList){
+        if (DomainValue>aStar && DomainValue<bStar){
+            const x = DomainValue
+            const [a,b,c,d] = poptList
+            return (+a)*Math.exp(-(((+b)*x+(+c))**2))+(+d)
+        }
+    }
+
+
+    /*This takes an integer representing a time value on the x-axis and returns a string in the format of
+    * hours:minutes of that integer. Is used in order to display the values on the x-axis not as integers but
+    * as strings in the said format in the chart.*/
+    function turnIntTimeToString(Int){
+        const helpString = Int.toString()
+        const split = helpString.split(".")
+
+        var firstNumber = +split[0]
+        firstNumber = firstNumber.toString()
+
+        if (+split[1]){
+            var secondNumber = +split[1]
+            secondNumber = Math.floor(secondNumber*6/(10**(secondNumber.toString().length-1)))
+            secondNumber = secondNumber.toString()
+            if (secondNumber.length==1){
+                secondNumber = "0" + secondNumber
+            }
+        }
+        else {
+            var secondNumber = "00"
+        }
+
+        return firstNumber.concat(":",secondNumber)
+    }
+
+    /* Creates a step-evenly-spaced object of rounded floats (2 decimal places) going from 'start' to 'stop'. */
+    function roundedFloatArray(start,stop,step){
+        return Array.from({length:(stop-start)/step+1},(value,index)=> Math.round((start+index*step + Number.EPSILON) * 100) / 100)
+    }
+
+
+    /**
+     * This function takes two arguments, 'base64' which is the base-64 encoded image of the displayed chart and 'browser', a string indicating whether
+     * the browser is chromium or non-chromium based. The base64 data is constructed via the 'post_base64_data_to_velo()' function in this html code,
+     * which sends the information back to WIX Velo, which in return sends the base64 information as well as browser client information back to this html
+     * code, executing the function below (redundant workflow!).
+     * The image data is then downloaded by creating an anchor element and bestowing the 'href' attribute with the base64 string and simulating a click on
+     * the anchor element. In case the browser is chrome, the base64 data is converted to binary data, which is transformed into an array of byte array via
+     * iterating over the data in chunks of 1024 characters. A blob is constructed from the array of byte arrays and a blob URL is created and opened in a new
+     * window via 'window.open'.
+     * @param {string} base64 - The base64-encoded image data.
+     * @param {string} browser - The type of browser ("non-chrome" or "chrome").
+     */
+
+    function download_png(base64,browser){
+        if (browser=="non-chrome"){
+            var a = document.createElement('a');
+            a.target="_blank";
+            a.href = base64;
+            a.download = 'pv_power.jpg';
+            a.click();
+        }
+
+        else if (browser=="chrome"){
+
+
+            const base64ImageData = base64
+            const contentType = 'image/png';
+
+            const byteCharacters = atob(base64ImageData.substr(`data:${contentType};base64,`.length));
+            const byteArrays = [];
+
+            for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+                const slice = byteCharacters.slice(offset, offset + 1024);
+
+                const byteNumbers = new Array(slice.length);
+                for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);}
+
+
+                const byteArray = new Uint8Array(byteNumbers);
+
+                byteArrays.push(byteArray);
+            }
+
+            const blob = new Blob(byteArrays, {type: contentType});
+            const blobUrl = URL.createObjectURL(blob);
+            window.open(blobUrl, '_blank');
+        }}
+
+    /**
+     * Creates the base64 data of the chart image via calling the 'toBase64Image()' method on the chart.JS instance.
+     * The base64 data is needed to download the current chart image via the 'download_png()' function. The base64 data
+     * is sent to WIX velo which gathers some browser information and reports back to this html code (redundant workflow.)
+     *
+     * SECURITY NOTE: the second argument of 'postMessage' has to be the deployed webpage URL.
+     *
+     */
+    function post_base64_data_to_velo(){
+        window.parent.postMessage(myChart.toBase64Image(),"https://www.solarbildung.org/live-solar-data")
+    }
+
+
+    /* C H A R T    A N D    S T Y L E    C O N F I G U R A T I O N */
+
+
+    Chart.defaults.global.defaultFontFamily = "Roboto Mono";
+    const gray = '#d9dada'
+    const tourquoise = '#d4ecf5'
+    const yellow = '#efe867'
+    const red = 'rgb(236, 95, 91)'
+    const transparent_red = 'rgb(236, 95, 91, 0.2)'
+    const green = 'rgb(0,229,0)'
+    const transparent_green = 'rgb(0,229,0, 0.2)'
+
+    var my_labels = roundedFloatArray(0,24,0.3)
+    const ctx = document.getElementById('myChart');
+
+
+    var myChart = new Chart(ctx, {
+
+        type: 'bar',
+        data: {
+            datasets: [{
+                // Generationspunkte datasets[0]
+                type: 'bar',
+                fill: false, //if style = line, set these attributes extra
+                showLine: false,
+                label: "Erzeugung",
+                borderColor : yellow,
+                backgroundColor: yellow,
+                borderWidth: 2,
+                borderSkipped: false,
+                data: []
+            },{
+                // Vebrauchspunkte datasets[1]
+                type: 'bar',
+                fill: false, //if style = line, set these attributes extra
+                showLine: false, //<- set this
+                label: "Verbrauch",
+                borderColor : tourquoise,
+                backgroundColor: tourquoise,
+                borderWidth: 2,
+                borderSkipped: false,
+                data: []
+
+            }],
+            labels: my_labels,
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: 0
+            },
+            chartArea: {
+                backgroundColor: 'rgba(255, 255, 255, 0)'
+            },
+            title: {
+                display: false,
+                text: 'Leistung der PV-Anlage in Watt',
+                position: 'left',
+                fontColor: gray,
+                fontStyle: "",
+                fontSize: 15,
+            },
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    fontColor: gray,
+                    fontStyle: "",
+                    fontSize: 10,
+                }
+            },
+            tooltips: {
+                mode: 'index',
+                intersect: false
+
+            },
+            hover: {
+                mode: 'index',
+                intersect: false
+            },
+            scales:{
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true,
+                        fontSize: 10,
+                        fontColor:  gray,
+                        fontStyle: "",
+                        padding:15,
+                    },
+                    gridLines: {
+                        drawTicks: false,
+                        color: gray,
+                    },
+                    scaleLabel:{
+                        display:true,
+                        labelString:"Leistung [W]",
+                        fontColor: gray,
+                    }
+                }],
+                xAxes: [{
+                    position: 'bottom',
+                    ticks: {
+                        autoSkip : true,
+                        maxTicksLimit: 15,
+                        fontSize: 10,
+                        fontColor: gray,
+                        fontStyle: "",
+                        padding:15,
+                        callback: function(value,index,ticks){
+                            const result = turnIntTimeToString(value)
+                            return result
+                        }
+                    },
+                    gridLines: {
+                        drawTicks: false,
+                        color: gray,
+                    },
+                    scaleLabel:{
+                        display:true,
+                        labelString:"Uhrzeit",
+                        fontColor: gray,
+                    }
+                }],
+
+            }
+
+        }
+    });
+
+
+
+    /* W I X    V E L O    H T M L    C O M M U N I C A T I O N */
+
+
+
+    window.onmessage = function(event){
+        if (event.data[0] === "post base64 back to velo!") {
+            post_base64_data_to_velo();
+        }
+        else if (event.data[0] === "UniversalXarrayUpdate"){
+            universalXarray = event.data[1]
+        }
+
+        else if(event.data[0].split(".")[0] === "POPT GEN"){
+
+            if (event.data[0].split(".")[1] === "cosine"){
+                var data = universalXarray.map(function(time)			{
+                    return CosineUpdateFunction(time,event.data[1],event.data[2],event.data[3])
+                })
+            }
+            else if (event.data[0].split(".")[1] === "gauss"){
+                var data = universalXarray.map(function(time)			{
+                    return GaussianUpdateFunction(time,event.data[1],event.data[2],event.data[3])
+                })
+
+            }
+            else{
+                var data = universalXarray.map(function(time)			{
+                    return PolynomialUpdateFunction(time,event.data[1],event.data[2],event.data[3])
+
+                })
+            }
+
+            generation_fit_dict = {
+                type: 'line',
+                data: data,
+                fill: true,
+                backgroundColor: transparent_green,
+                borderColor : green,
+                showLine: true,
+                label: 'Erzeugungs-Fit',
+                pointRadius: 0,
+            }
+            myChart.data.datasets.push(generation_fit_dict)
+            myChart.update();
+        }
+        else if (event.data[0].split(".")[0] === "POPT CONSUMPTION"){
+
+            var data = universalXarray.map(function(time)			{
+                return PolynomialUpdateFunction(time,event.data[1],event.data[2],event.data[3])
+            })
+
+            consumption_fit_dict = {
+                type: 'line',
+                data: data,
+                fill: true,
+                backgroundColor: transparent_red,
+                borderColor : red,
+                showLine: true,
+                label: 'Verbrauchs-Fit',
+                pointRadius: 0,
+            }
+            myChart.data.datasets.push(consumption_fit_dict)
+            myChart.update();
+        }
+
+        else if (event.data[0] === "ChangeToPointStyle"){
+            myChart.data.datasets[0].type ="line"
+            myChart.data.datasets[1].type ="line"
+            myChart.update();
+        }
+        else if (event.data[0]==="ChangeToBarStyle"){
+            myChart.data.datasets[0].type ="bar"
+            myChart.data.datasets[1].type ="bar"
+            myChart.update();
+        }
+        else if (event.data[0] === "AddStandartConsumptionProfile!"){
+            myChart.data.datasets[2].backgroundColor = "#00FFFF"
+
+            myChart.data.datasets[1].data = my_labels.map(function(value)			{
+                return UpdateFunction(value)
+            })
+            myChart.update();
+        }
+        else if (event.data[0] === "RemoveStandartConsumptionProfile!"){
+            console.log("i aint doin nothing")
+        }
+
+        else if (event.data[1] === "Packet: Base64 image data, please download."){
+            download_png(event.data[0],event.data[2]);
+        }
+        else if (event.data[0] === "Time and generation data, non-demo."){
+            var PairOfxyTuples = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: keyAndValue[1]});
+            myChart.data.datasets[0].data = PairOfxyTuples
+            const length = PairOfxyTuples.length
+            var step = 24/(length-1)
+            myChart.data.labels = roundedFloatArray(0,24,step)
+            myChart.update();
+        }
+        else if (event.data[0] === "Time, generation and consumption data, demo."){
+            var PairOfxyTuples_generation = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][0])});
+
+            var PairOfxyTuples_consumption = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][1])});
+
+            myChart.data.datasets[0].data = PairOfxyTuples_generation
+            myChart.data.datasets[1].data = PairOfxyTuples_consumption
+
+            const length = PairOfxyTuples_generation.length
+            var step = 24/(length-1)
+            myChart.data.labels = roundedFloatArray(0,24,step)
+            myChart.update();
+
+        }
+        else if (event.data[0] === "Please clear any existing fits."){
+            myChart.data.datasets[2].data = []
+            myChart.data.datasets[3].data = []
+            myChart.update();
+        }
+    }
+
+
+</script>
+
+
+
+
+

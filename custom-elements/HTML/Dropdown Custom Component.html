@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100&display=swap');
+</style>
+
+<style>
+
+    body {
+        background-color: #123c5f;
+    }
+
+    .Custom-Dropdown {
+        align-items: center;
+        background-color: rgba(0,0,0,0.2);
+        color: white;
+        cursor: pointer;
+        direction: ltr;
+        display: flex;
+        flex-wrap: nowrap;
+        height: 1.3em;
+        justify-content: start;
+        padding: 6px 10px 6px 10px;
+        transition: all .5s ease;
+        transition-property: background-color;
+        font-family: 'Roboto', sans-serif;
+    }
+
+    .Custom-Tooltip {
+        font-family: 'Roboto', sans-serif;
+        color:white;
+        margin-top: 10em;
+    }
+
+    #Outer-Image-Wrapper{
+        background-color: rgba(0,0,0,0.6);
+        width:max-content;
+    }
+
+    .Dropdown-Menu-Image{
+        height: 5em;
+        cursor:pointer;
+    }
+
+    #Dropdown-Options-Wrapper{
+        visibility: hidden;
+        position: absolute;
+    }
+
+    .Custom-Dropdown-Close-Window{
+        background-color: rgba(0,0,0,0.6);
+    }
+
+    .Svg-Path-Animation{
+        stroke-dasharray: 320; /* Should be length of the svg, such that a continuous line is shown */
+        stroke-dashoffset: 0; /* where the animation should start. */
+        animation: dash-animation 2s linear;
+    }
+
+
+    /*     H O V E R    S T Y L E S    A N D    P S E U D O    S E L E C T O R S    */
+
+
+    .Custom-Dropdown:hover {
+        background-color: rgba(0,0,0,0.4);
+    }
+
+    .Custom-Dropdown-Close-Window:hover{
+        background-color: rgba(0,0,0,0.6);
+    }
+
+    .Close-Button:after{
+        display: inline-block;
+        content: "\00d7"; /* This will render the 'X' */
+        font-size: 2em;
+        cursor: pointer;
+    }
+
+    .Close-Button:hover{
+        color: rgb(236, 95, 91);
+    }
+
+    /* D E F I N I N G    K E Y F R A M E S    A N I M A T I O N S*/
+
+    @keyframes dash-animation {
+        from {
+            stroke-dashoffset: 360;
+        }
+        to {
+            stroke-dashoffset: 0;
+        }
+    }
+
+</style>
+
+<body>
+
+
+<div id="Outer-Image-Wrapper"><img class="Dropdown-Menu-Image" alt="Lorem Picsum" src="../../media/scalable-vector-graphics/daily-calendar-mode.svg"></div>
+<div id="Dropdown-Options-Wrapper"></div>
+
+
+<div class="Custom-Tooltip"> This is a custom tooltip</div>
+
+
+<script>
+
+    // G L O B A L    V A R I A B L E S
+    var index_of_currently_selected_element = 0
+    var currently_used_image = null
+
+    // C O L O R    P A L E T T E
+
+    const gray = '#d9dada'
+    const tourquoise = '#d4ecf5'
+    const yellow = '#efe867'
+    const red = 'rgb(236, 95, 91)'
+    const transparent_red = 'rgb(236, 95, 91, 0.2)'
+    const green = 'rgb(0,229,0)'
+    const transparent_green = 'rgb(0,229,0, 0.2)'
+
+
+
+    // H E L P E R    F U N C T I O N S
+    function createDropdownMenuDivs(list_of_choices,base_ID, index_of_default_element, list_of_image_urls){
+
+        let outer_dropdown_wrapper = document.getElementById('Dropdown-Options-Wrapper')
+
+        // the very first option in the dropdown menu should be a 'close this window' option
+        let close_menu_div = document.createElement('div')
+        let close_menu_cross = document.createElement('div')
+        close_menu_cross.classList.add('Close-Button')
+        close_menu_cross.setAttribute('id',`${base_ID}-close-button`)
+
+        close_menu_div.classList.add('Custom-Dropdown', 'Custom-Dropdown-Close-Window')
+        close_menu_div.appendChild(close_menu_cross)
+
+        outer_dropdown_wrapper.appendChild(close_menu_div)
+
+
+        // for all options given in 'list_of_choices', create a div of class 'Custom-Dropdown' and bestow it
+        // with text. Using 'array.forEach' instead of looping with 'for const of...' because latter is
+        // bad practice and the 'forEach' method returns the counter index as well.
+
+        list_of_choices.forEach(function (option, counter_index) {
+
+
+            // create text and div, add 'Custom-Dropdown' class and append to outer wrapper
+            let div_text = document.createTextNode(option)
+            let new_div = document.createElement('div')
+            new_div.appendChild(div_text)
+            new_div.classList.add('Custom-Dropdown', 'Option')
+            outer_dropdown_wrapper.appendChild(new_div)
+
+            // if the 'choice_${counter_index}' is equal to 'index_of_default_element', add additional style to indicate that this is the currently selected
+            // element.
+
+            if (counter_index === index_of_default_element){
+                new_div.style.borderBottom = `1px solid ${green}`
+            }
+
+            // give the dropdown an ID based on the counter and base ID
+            new_div.setAttribute('id', `${base_ID}-${counter_index}`)
+
+            // change the image source depending onhover on the div
+            new_div.setAttribute('onmouseover', `handleImageSourceChangeOnMouseIn('${list_of_image_urls[counter_index]}')`)
+            new_div.setAttribute('onmouseout', 'handleImageSourceChangeOnMouseOut()')
+
+        })
+    }
+
+    function AddEventClickListenerDropdownChoices(list_of_image_urls){
+        // Finally, add a click event listener, that changes the style to indicate selection and alters the global variable 'index_of_currently_selected_element'.
+        let all_dropdown_options = document.getElementsByClassName('Option')
+        let all_dropdown_options_array = [...all_dropdown_options]
+        let length = all_dropdown_options_array.length
+        // convert the 'HTMLCollection' into an Object via the spread operator in order to use the '.forEach()' method on it
+        all_dropdown_options_array.forEach(function (dropdown_div, counter_index){
+            dropdown_div.addEventListener('click', event => {
+                // green border for the selected element.
+                dropdown_div.style.borderBottom = `1px solid ${green}`
+                dropdown_div.style.backgroundColor = 'rgba(0,0,0,0.4)'
+                index_of_currently_selected_element = counter_index
+                currently_used_image = list_of_image_urls[counter_index] // option was selected, update global variable 'currently_used_image'
+
+
+                let image = document.getElementsByClassName("Dropdown-Menu-Image")[0]
+                image.src = currently_used_image
+
+                // alert(index_of_currently_selected_element) or rather window.parent.postMessage('index_of_currently_selected_element', index_of_currently_selected_element) . . .
+
+                // For all other elements, set the border to none, indicating that option is not active
+                let i = 0
+                while ( i < length ){
+                    if ( i !== index_of_currently_selected_element){
+                        all_dropdown_options_array[i].style.border = '0px'
+                        all_dropdown_options_array[i].style.backgroundColor = 'rgba(0,0,0,0.2)'
+                    }
+                    i++
+            }
+            })
+        })
+    }
+
+    function handleImageSourceChangeOnMouseIn(ImageToChangeTo){
+        let image = document.getElementsByClassName("Dropdown-Menu-Image")[0]
+        image.src = ImageToChangeTo
+    }
+
+    function handleImageSourceChangeOnMouseOut(){
+        let image = document.getElementsByClassName("Dropdown-Menu-Image")[0]
+        image.src = currently_used_image
+    }
+
+    function HandleOnClickCloseMenuDiv(base_ID){
+        // if the 'close-menu' button is clicked, set visibility of 'dropdown_options_wrapper' to hidden.
+        let close_menu_cross = document.getElementById(`${base_ID}-close-button`)
+        let dropdown_options_wrapper = document.getElementById('Dropdown-Options-Wrapper')
+        close_menu_cross.addEventListener('click', event => {dropdown_options_wrapper.style.visibility='hidden'})
+
+    }
+
+    function CloseDropdownIfClickOnlyOnBody(){
+        // if a click is registered anywhere on the body except for the image wrapper or the dropdown menu, hide the dropdown menu.
+        let dropdown_menu_image = document.getElementsByClassName('Dropdown-Menu-Image')[0]
+        let body = document.getElementsByTagName('body')[0]
+        let dropdown_options_wrapper = document.getElementById('Dropdown-Options-Wrapper')
+        body.addEventListener('click', event => {
+            let target = event.target
+            let target_class_list = [...target.classList]
+            if (target !== dropdown_menu_image && !target_class_list.includes('Option')){
+                dropdown_options_wrapper.style.visibility = 'hidden'
+            }
+        })
+    }
+
+    function handleClick(event){
+
+        let outer_dropdown_wrapper = document.getElementById('Dropdown-Options-Wrapper')
+        let dropdown_menu_image = document.getElementsByClassName('Dropdown-Menu-Image')[0]
+
+        // adjust the position of the outer wrapper programmatically
+        let x_position = dropdown_menu_image.getBoundingClientRect().right-10
+        let y_position = dropdown_menu_image.getBoundingClientRect().bottom-10
+
+        outer_dropdown_wrapper.style.position = 'absolute'
+        outer_dropdown_wrapper.style.left = x_position+'px'
+        outer_dropdown_wrapper.style.top = y_position+'px'
+        outer_dropdown_wrapper.style.visibility = 'visible'
+
+    }
+
+    function InsertDefaultImageIntoDropdownTrigger(default_url){
+        let dropdown_menu_image = document.getElementsByClassName('Dropdown-Menu-Image')[0]
+        dropdown_menu_image.src = default_url
+    }
+
+
+</script>
+
+<script>
+
+    // These are constants used to structure this code example
+    const choice_1 = "Tagesübersicht"
+    const choice_2 = "Wochenübersicht"
+    const url_1 = "media/scalable-vector-graphics/daily-calendar-mode.svg"
+    const url_2 = "media/images/weekly-calendar-mode.png"
+
+    // These are constants that will be need to be inputted via attributes
+    const base_ID = "submoon-choice"
+    const index_of_default_element = 0 // choice_1 === 0 ; choice_2 === 1 ;
+    const list_of_choices = [choice_1, choice_2]
+    const list_of_image_urls = [url_1, url_2] // the images associated with 'url_1' and 'url_2' respectively. The first url needs to be the url for the default choice.
+    const default_image = list_of_image_urls[0]
+
+
+    currently_used_image = default_image
+    index_of_currently_selected_element = index_of_default_element
+
+    // Based on these constants, create the dropdown menu items
+    createDropdownMenuDivs(list_of_choices, base_ID, index_of_default_element, list_of_image_urls, currently_used_image)
+    HandleOnClickCloseMenuDiv(base_ID)
+    CloseDropdownIfClickOnlyOnBody()
+    AddEventClickListenerDropdownChoices(list_of_image_urls)
+    InsertDefaultImageIntoDropdownTrigger(default_image)
+
+    let dropdown_menu_image = document.getElementsByClassName('Dropdown-Menu-Image')[0]
+    dropdown_menu_image.addEventListener('click', event =>  handleClick(event))
+</script>
+
+</body>
+</html>
