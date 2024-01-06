@@ -1,6 +1,7 @@
 import {fetch} from 'wix-fetch';
 import {getSecret} from 'wix-secrets-backend'
 import {format_time} from 'public/graphs-custom-helper-functions.js'
+import {format_time_short} from "../public/graphs-custom-helper-functions";
 
 const ALL = ['postHttpRequest', 'getAllEnabledDates_VictronSolution', 'findBasicSchoolInformationFromID_VictronSolution',
                         'fetchPowerAndTimeDataForDay_VictronSolution']
@@ -56,32 +57,81 @@ export async function postHttpRequest(url, message){
 }
 
 /**
- * Gets all enabled dates for the victron solution by checking for
+ * Gets all enabled dates for the victron solution by checking for each date in the parameter 'startEndArray' whether the query 'data.records.from_to_grid' is false or true.
+ * This function uses the endpoint found at the URL 'https://vrm-api-docs.victronenergy.com/#/operations/installations/idSite/stats'.
+ * It checks in range of 'startEndArray', for each day, whether data was logged for that day or not. VRM needs a unix timestamp for the 'start' and 'end' parameters.
+ * Furthermore, according to the VRM documentation, when probing whether data was logged on a given day (using the interval: 'day' parameter), the max allowed time distance
+ * between the start and the unix timestamp is 180 days. But, I have found this to not be true, since I managed to gather data for 360 days maximum time interval.
  *
- * @param  {string} siteID            : The location of the private python server.
- * @param  {Object} startEndArray     : An array containing all unix timestamps to look data for.
+ * On success, the message displayed is something like:
  *
- * @return {Promise<any>}                   : An array of all timestamps data was found for.
+ * {
+ *     "success": true
+ *     "records": {
+ *         "from_to_grid": [
+ *             [
+ *                  // Timestamp for day at which data was found in MILLISECONDS (Javascript format). The hours of this timestamp is exactly equal to the hours of the 'start' parameter,
+ *                  // Float, that I think represents the average power value for that day, e.g. -2.756145
+ *             ],
+ *             [
+ *                 // second day etc.
+ *             ]
+ *         ]
+ *     }
+ * }
+ *
+ * If no data was found in the specified interval, the message is:
+ *
+ * {
+ *     "success": true
+ *     "records": {
+ *         "from_to_grid": false
+ *       }
+ * }
+ *
+ *
+ * If you have done something wrong, e.g. confused the 'start' with the 'end' parameter or the distance between the 'start' and 'end' timestamp is to big:
+ *
+ *
+ * If no data was found in the specified interval, the message is:
+ *
+ * {
+ *     "success": true
+ *     "records": {
+ *         "from_to_grid": []
+ *       }
+ * }
+ *
+ *
+ *
+ * @param  {string} siteID            : The string identifier associated with the side.
+ * @param  {Object} startEndArray     : An array containing all unix timestamps at which to look data for.
+ *
+ * @return {Promise<any>}                   : A promise that resolves to an array containing all unix timestamps that data was found for
  *
  */
 export async function getAllEnabledDates_VictronSolution(siteID,startEndArray){
     let allEnabledDates = []
     let accessToken = await getSecret("vrm_API_key");
-    for (const i of startEndArray){
-        const url = `https://vrmapi.victronenergy.com/v2/installations/${siteID}/stats?start=${i[0]}&end=${i[1]}&type=custom&interval=days&attributeCodes%5B%5D=from_to_grid`
+    for (const yearlySubdivision of startEndArray){
+        const [start, end] = yearlySubdivision
+        const url = `https://vrmapi.victronenergy.com/v2/installations/${siteID}/stats?start=${start}&end=${end}&type=custom&interval=days&attributeCodes%5B%5D=from_to_grid`
         await fetch(url,{method:"get",headers:{
                 "Content-Type": "application/json",
                 "x-authorization": `Token ${accessToken}`,
-            }}).then(rawdata=>{return rawdata.json()}).then(data=>{
-            console.log("FETCH DATA ", data)
+            }}).then(rawData=>{return rawData.json()}).then(data=>{
             const records = data.records.from_to_grid
             if (records!==false){
-                for (const i of records){
-                    if (i[1]!=null){
-                        allEnabledDates.push(i[0]/1000)
+                for (const record of records){
+                    const [timestampJSDataWasFoundFor, averagePowerFound] = record
+                    if (averagePowerFound > -0.3 ){
+                        console.log("Sth smells fishy... average power found:", averagePowerFound, " at timestamp: ", format_time_short(Math.floor(timestampJSDataWasFoundFor/1000)))
+                    }
+                    if (averagePowerFound != null){
+                        allEnabledDates.push(Math.floor(timestampJSDataWasFoundFor/1000))
                     }
                 }}
-        }).catch(er => console.log("An error occured: ",er)).catch(er => console.log("An error occured: ",er))
+        }).catch(er => console.log("An error occured within the 'getAllEnabledDates_VictronSolution' function when iterating through records: ",er)).catch(er => console.log("An error occured within the 'getAllEnabledDates_VictronSolution' function: rawdata.json() failed: ",er))
     }
     return allEnabledDates
 }
@@ -96,8 +146,6 @@ export async function getAllEnabledDates_VictronSolution(siteID,startEndArray){
  *
  */
 export async function findBasicSchoolInformationFromID_VictronSolution(debug,SiteID){
-
-    console.log("Entered the 'findBasicSchoolInformationFromID' function. ")
 
     const accessToken = await getSecret("vrm_API_key");
     const UserID = await getSecret("vrm_iason_userID")

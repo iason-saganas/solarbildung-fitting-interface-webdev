@@ -5,7 +5,8 @@ import wixData from 'wix-data';
 const ALL = ['checkDemoKey', 'grabDemoDataFromMasterCSV']
 
 /**
- * Gets the secrete demo key using Wix Velo API and checks if input is equal to that.
+ * Gets the secrete demo key using Wix Velo API and checks if input is equal to that. Since as of 04.01.2024 we are publicly announcing the demo ID,
+ * there is no reason anymore to pull this from wix-secrets.
  *
  * @param  {string} demoID : A array of length 2 that contains the to be zipped arrays
  *

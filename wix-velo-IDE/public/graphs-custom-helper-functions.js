@@ -1,7 +1,7 @@
 const ALL = ['zip', 'swap', 'create_latex_param', 'format_time', 'format_time_short', 'format_time_by_hours',
                         'format_time_short_with_slash', 'convert_time_string_to_int', 'calculate_month_difference', 'create_parameter_list_for_copy_to_clipboard',
                         'add_months_to_date', 'sum_of_arrays', 'swap_elements_of_arr_based_on_index', 'rounded_float_array', 'create_standard_consumption_samples',
-                        'create_geogebra_command_string', 'convert_string_to_unix_timestamp']
+                        'create_geogebra_command_string', 'convert_string_to_unix_timestamp', 'findWhichCustomerSolution']
 
 /**
  * zips two arrays. I.e. zip( [ [1,2,3] , [4,5,6] ] ) = [ [1, 4] , [2, 5] , [3, 6]]
@@ -426,4 +426,24 @@ export function create_geogebra_command_string(xArray, yArray, y2Array, latexGen
     return str1 + str2 + str3 + str4 + str5 + str6 + str7 + str8 + str9 + str10 + str11
 
 
+}
+
+/**
+ * Based on some identifier, this returns which customer solution is in use.
+ *
+ * @param  {Number} identifier          :   Some identifier, e.g. the SiteID. In future maybe a prefix like 'VRM-', 'UKMongoDB-' etc.
+ *
+ * @return {string} customerSolution    :   The customer solution name as a string.
+ *
+ */
+export function findWhichCustomerSolution(identifier){
+    let customerSolution = null
+    if (identifier === 727738){
+        // Public demo ID!
+        customerSolution = 'Demo'
+    }
+    else {
+        customerSolution = 'Victron'
+    }
+    return customerSolution
 }

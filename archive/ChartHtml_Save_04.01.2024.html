@@ -169,20 +169,22 @@
      * the anchor element. In case the browser is chrome, the base64 data is converted to binary data, which is transformed into an array of byte array via
      * iterating over the data in chunks of 1024 characters. A blob is constructed from the array of byte arrays and a blob URL is created and opened in a new
      * window via 'window.open'.
-     * @param {string} base64 - The base64-encoded image data.
-     * @param {string} browser - The type of browser ("non-chrome" or "chrome").
+     * @param {boolean} isChromium - Whether the type of browser is chromium-based or not.
      */
 
-    function download_png(base64,browser){
-        if (browser=="non-chrome"){
-            var a = document.createElement('a');
+    function download_png(isChromium){
+
+        const base64 = myChart.toBase64Image()
+
+        if (isChromium===false){
+            let a = document.createElement('a');
             a.target="_blank";
             a.href = base64;
             a.download = 'pv_power.jpg';
             a.click();
         }
 
-        else if (browser=="chrome"){
+        else{
 
 
             const base64ImageData = base64
@@ -359,11 +361,20 @@
 
 
     window.onmessage = function(event){
-        if (event.data[0] === "post base64 back to velo!") {
-            post_base64_data_to_velo();
+
+        // All messages arriving should be in this format: $w("#ChartJsDaily").postMessage( [ 'Download Png.', [ true ] ] )
+
+        let command = event.data[0]
+        let context = event.data[1]
+
+        console.log("Received command: ", command)
+
+        if (command === 'Download Png.'){
+            const isChromium = context[0]
+            download_png(isChromium)
         }
-        else if (event.data[0] === "UniversalXarrayUpdate"){
-            universalXarray = event.data[1]
+        else if (command === "Update universal x array (timestamps)."){
+            universalXarray = context
         }
 
         else if(event.data[0].split(".")[0] === "POPT GEN"){
@@ -441,9 +452,6 @@
             console.log("i aint doin nothing")
         }
 
-        else if (event.data[1] === "Packet: Base64 image data, please download."){
-            download_png(event.data[0],event.data[2]);
-        }
         else if (event.data[0] === "Time and generation data, non-demo."){
             var PairOfxyTuples = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: keyAndValue[1]});
             myChart.data.datasets[0].data = PairOfxyTuples
@@ -466,10 +474,17 @@
             myChart.update();
 
         }
-        else if (event.data[0] === "Please clear any existing fits."){
-            myChart.data.datasets[2].data = []
-            myChart.data.datasets[3].data = []
-            myChart.update();
+        else if (command === "Clear any existing fits."){
+            try {
+                // Clear fits if exist
+                myChart.data.datasets[2].data = []
+                myChart.data.datasets[3].data = []
+                myChart.update();
+            }
+            catch (error){
+                // pass if they don't exist
+            }
+
         }
     }
 

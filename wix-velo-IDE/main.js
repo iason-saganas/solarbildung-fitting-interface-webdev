@@ -1,3 +1,46 @@
+/*
+*
+* Workflow and structure of this code. The code is organized in six sections:
+*
+* 1. Imports
+* 2. Definition of naming conventions
+* 3. Definition of global variables
+* 4. Basic functions. MOST IMPORTANT: 'returnPowerData()'
+* 5. On ready listener function of this document
+* 6. Specific $w('#ElementOnThisPage') listener functions (_click, _change, etc.). MOST IMPORTANT: 'InitializeWorkspaceWithIdButton_click()' and 'FitButton_click()'.
+*
+*
+* The user inputs an ID in the input field "$w('InputID')". The ID determines which Site and which customer solution to present data for.
+* Current customer solutions are the Victron Cloud (DE), MongoDB (UK) and demo data (UK Foxfield-School).
+* On hitting the send button, the listener function 'InitializeWorkspaceWithIdButton_click()' is called.
+*
+*
+* ==> I N I T I A L I Z A T I O N
+*
+* Send form $w('InputID').
+*   --> InitializeWorkspaceWithIdButton_click() call
+*       --> customerSolution = findWhichCustomerSolution() call
+*           const workspaceSolutions = [InitializeWorkspace_DemoSolution ,InitializeWorkspace_VictronSolution, InitializeWorkspace_UKMongoDBSolution]
+*           const solutionNames = ['Victron', 'UKMongoDB']
+*           find the index of 'customerSolution' in the array 'solutionNames' and execute the function in the array
+*           'workspaceSolutions' that lies at that index.
+*               --> pushGraphDataToPlotter(useDemoData, chartJsDailyInstance, costumerSolutionName) call
+*
+*
+* ==> D A T A    P L O T
+*
+* $w('DailyDatePicker').onChange or $w('#RadioInstallationOptions').onchange
+*   --> pushGraphToDataPlotter(date) call
+*       --> returnPowerData(date, customerSolution) call
+*
+*
+* ==> F I T T I N G    S E T T I N G S:
+*
+* --> FitButton_click() call
+*
+* */
+
+
 import wixWindow from 'wix-window';
 import wixWindowFrontend from 'wix-window-frontend';
 
@@ -24,7 +67,8 @@ import {
     add_months_to_date,
     convert_string_to_unix_timestamp,
     swap_elements_of_arr_based_on_index,
-    create_geogebra_command_string
+    create_geogebra_command_string,
+    findWhichCustomerSolution
 } from 'public/graphs-custom-helper-functions.js'
 
 import {
@@ -44,6 +88,19 @@ import {
     hide_weekly_dials_show_daily_dials,
     hide_daily_dials_show_weekly_dials
 } from 'public/graphs-element-manipulation-functions.js'
+
+import {
+    findAndProcessData_DemoSolution_Daily,
+    InitializeWorkspace_DemoSolution_Daily
+} from "public/data-solutions/demo";
+
+import {
+    InitializeWorkspace_VictronSolution_Daily
+} from "public/data-solutions/victron";
+
+import {
+    InitializeWorkspace_UKMongoDBSolution_Daily
+} from "public/data-solutions/united-kingdom-mongoDB";
 
 
 
@@ -118,8 +175,6 @@ var customerSolution = 'Victron'
 
 
 
-
-
 /*
  * Dependent on function 'returnPowerData(debug)', which needs to be on this code site.
  * Calls 'returnPowerData(debug)' and then posts queried time and generation data to 'ChartJsDaily' (chart js plotter) object.
@@ -127,69 +182,34 @@ var customerSolution = 'Victron'
  * @return  None
  */
 function pushGraphDataToPlotter(isDemo, chartJsElement){
-    returnPowerData(false, isDemo, customerSolution).then(dictOfXYValues=>{
-        if (!isDemo){
-            chartJsElement.postMessage(["Time and generation data, non-demo.",dictOfXYValues])
+    returnPowerData(false, isDemo, customerSolution).then(dict=>{
+        if (customerSolution !== 'Demo'){
+            // dict contains x and y values
+            chartJsElement.postMessage(["Time and generation data, non-demo.",dict])
         }
-        else if (isDemo){
-            const dictOfXYZValues = dictOfXYValues
-            chartJsElement.postMessage(["Time, generation and consumption data, demo.",dictOfXYZValues])
+        else if (customerSolution === 'Demo'){
+            // dict contains x, y and z values
+            chartJsElement.postMessage(["Time, generation and consumption data, demo.",dict])
         }
     })
 }
 
-/* NOTE OF 08.08.23: This workflow can obviously be reduced via directly sending the browser information to the 'ChartJsDaily' object
- * and it then executing the download directly instead of sending a message back to the wix velo api.
- * On ready this function listens to messages coming from the 'ChartJsDaily' object (chart js plotter). When there exists graph data in 'ChartJsDaily'
- * object, and the 'jpgButton' object was clicked, the function 'setDownloadJPGLink()' is activated, which orders the 'ChartJsDaily' object to post
- * back a base64 encoded image string onto the wix velo api, which is caught by this function. This function then determines whether the current browser
- * is chrome or non-chrome and communicates back to the 'ChartJsDaily' object, which then executes the download via a hot-link based on which browser is currently used.
- * @param   None
- * @return  None
- */
-function getBase64data(){
-    // check if base64 image data is already available
-    $w("#ChartJsDaily").onMessage(event => {
-        let receivedData = event.data;
-        //const externalURL = myGetDownloadUrlFunction(receivedData)
-        //externalURL.then((results)=>{$w('#jpgButton').link=results})
-        // Created anchor element and bestow it with URi Link
-        let userAgent = navigator.userAgent;
-        if(userAgent.match(/chrome|chromium|crios/i)){
-            $w("#ChartJsDaily").postMessage([receivedData,"Packet: Base64 image data, please download.","chrome"])}
-        else {
-            $w("#ChartJsDaily").postMessage([receivedData,"Packet: Base64 image data, please download.","non-chrome"])}
-    });
-}
 
-/* The function that is activated on_click of the 'jpgButton' object. It orders the 'ChartJsDaily' object to post back a base64 image string
- * of the existing image data. The base64 string is sent to the function 'getBase64data()'.
- * @param   None
- * @return  None
- */
-function setDownloadJPGLink(){
-    $w("#ChartJsDaily").postMessage(["post base64 back to velo!","first callback"])
-}
-
-/*  The VRM Api query data function, catching time stamps and generation data for the current constraints on the web page (date, installation).
+/*  The customer-specific query data function, catching time stamps and generation data for the current constraints on the web page (date, installation).
  *  Hides/shows necessary accessories.
  * @param   {bool}      debug                 :   If true, various debug statements are printed.
  * @return  {object}    DictOfXandYvalues     :   A dictionary object containing timestamps and generation (y-) values for the given date.
  */
-function returnPowerData(debug, is_demo, customerSolution){
+function returnPowerData(debug, is_demo, currentCustomerSolution){
     $w("#copyGenPoptButton").hide()
-
 
     initialize_fit_results_texts($w("#EnergieKontrollErgebnis"), $w("#AbweichungDesIntegrals"), $w("#Nullstellen"), $w("#GrenzenFitintervall"))
     wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
 
-    const date = $w("#datePicker").value
+    const date = $w("#DailyDatePicker").value
 
-
-
-
-    if (!is_demo && customerSolution==='Victron'){
-        let YesterdayTimeStamp = date.getTime() - (1 * 86400000);
+    if (!is_demo && currentCustomerSolution === 'Victron'){
+        let YesterdayTimeStamp = date.getTime() - 86400000;
         let yesterDate = new Date(YesterdayTimeStamp);
         const installation_id = $w("#radioGroupInstallations").value
         // date format should be month day year for timestamp() function date.setDate(date.getDate() - 1)
@@ -199,6 +219,7 @@ function returnPowerData(debug, is_demo, customerSolution){
 
 
         return fetchPowerAndTimeDataForDay_VictronSolution(debug,installation_id,convert_string_to_unix_timestamp(correctedDateDayBefore),convert_string_to_unix_timestamp(correctedDateCurrent)).then(DictOfXandYvalues=>{
+
             const lengthOfPowerData = Object.keys(DictOfXandYvalues).length
 
 
@@ -227,79 +248,15 @@ function returnPowerData(debug, is_demo, customerSolution){
                 }
                 var csvFile = new Blob([csv], {type: "text/csv"});
                 $w("#DownloadCSVhtml").postMessage(["Store csv blob",csvFile])
-                console.log("dict of x and y values -->", DictOfXandYvalues)
                 return DictOfXandYvalues
             }
         })
     }
-    else if (is_demo){
 
 
+    else if (currentCustomerSolution === "Demo"){
 
-        globalXArray.length = 0
-        globalYArray.length = 0
-        globalZArray.length = 0
-        const date_in_correct_format = format_time_short_with_slash(convert_string_to_unix_timestamp(date))
-        const month = date_in_correct_format.split("/")[1]
-
-
-        return grabDemoDataFromMasterCSV(month).then(data => {
-
-            const line_by_line_data = data.split("\n").map(el=>el.replace(/(\r\n|\n|\r)/gm, "")); // split data line by line and remove extra '\r' breaks
-            for (const line of line_by_line_data){
-                const timestamp_of_data = line.split(" ")[0]            // something like 01/05/2023 (day/month/year)
-
-                if (timestamp_of_data==date_in_correct_format){
-
-                    // the x data is this element
-                    var xData_unedited = line.split(",")[0]        // but 'convert_string_to_unix_timestamp()' needs (month/day/year) so swap month and day
-                    xData_unedited = xData_unedited.split("")
-                    swap_elements_of_arr_based_on_index(xData_unedited, 0, 3)
-                    swap_elements_of_arr_based_on_index(xData_unedited, 1, 4)
-                    const xData_edited = xData_unedited.join("")
-                    const xData = convert_string_to_unix_timestamp(xData_edited)
-                    const yData = line.split(",")[1]
-                    const y2Data = line.split(",")[2]   // consumption data
-                    globalXArray.push(xData)
-                    globalYArray.push(yData)
-                    globalZArray.push(y2Data)
-                }
-            }
-
-            globalYArray = [globalYArray] // put another set of brackets around anything that represents power values (convention)
-            globalZArray = [globalZArray]
-
-            $w("#ChartJsDaily").postMessage(["UniversalXarrayUpdate",globalXArray.map(el=>convert_time_string_to_int(format_time(el)))])
-
-            let language = wixWindowFrontend.multilingual.currentLanguage; // "en" or "es" or "de"
-            if (language=="es"){
-                var csv = "Registró temporal;"+"Generacíon de energía en vatios;"+"Consumo de energía en vatios"+"\n"
-            }
-            else if (language=="en"){
-                csv = "Timestamp;"+"Generation power in Watts;"+"Consumption power in Watts"+"\n"
-            }
-            else if (language=="de"){
-                var csv = "Zeitstempel;"+"Erzeugung in Watt;"+"Verbrauch in Watt"+"\n"
-            }
-
-            const YandY2zip = zip([globalYArray[0], globalZArray[0]])
-
-            const XandYAndY2zip_for_csv = zip([globalXArray.map(x=>'='+'"'+format_time_short(x).toString()+'"'), YandY2zip])
-            const XandYAndY2zip = zip([globalXArray, YandY2zip])
-
-            for (const i of XandYAndY2zip_for_csv){
-                csv += i[0]+";"+i[1][0]+";"+i[1][1]
-                csv += "\n"
-            }
-            var csvFile = new Blob([csv], {type: "text/csv"});
-            $w("#DownloadCSVhtml").postMessage(["Store csv blob",csvFile])
-
-            const map_for_dict_creation = new Map(XandYAndY2zip)
-            const DictOfXandYandY2values = Object.fromEntries(map_for_dict_creation);
-
-
-            return DictOfXandYandY2values
-        })
+        return findAndProcessData_DemoSolution_Daily(date, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
     }
 }
 
@@ -390,7 +347,6 @@ $w.onReady(function () {
     $w("#optionOverviewGray").hide()            // Hide the overview option gray span, since the blue version is the default
     // $w("#errorGroup").hide()                    // Hide the error box
     $w("#radioGroupInstallations").disable();   // This is going to be enabled with the initialize_workspace function
-    getBase64data();                            // This NEEDS to be here for the JPG communication to work properly!!
 
 });
 
@@ -608,15 +564,15 @@ export function FunctionChoiceDropDown_change(event) {
 }
 
 
-export function datePicker_change(event) {
-    pushGraphDataToPlotter(useDemoData)
-    $w("#ChartJsDaily").postMessage(["Please clear any existing fits."])
+export function DailyDatePicker_change(event) {
+    pushGraphDataToPlotter(useDemoData, $w("#ChartJsDaily"))
+    $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
 }
 
 export function radioGroupInstallations_change(event) {
     $w("#errorGroup").hide()
-    pushGraphDataToPlotter(useDemoData)
+    pushGraphDataToPlotter(useDemoData,$w("#ChartJsDaily"))
 }
 
 export function OverviewOptionButton_click(event) {
@@ -634,9 +590,8 @@ export function OverviewOptionButton_click(event) {
     $w("#box11").show()
 
     change_graph_style_to_bar($w("#ChartJsDaily"))
-    $w("#ChartJsDaily").postMessage(["Please clear any existing fits."])
+    $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
 }
-
 
 
 
@@ -644,7 +599,26 @@ export function OverviewOptionButton_click(event) {
 export function InitializeWorkspaceWithIdButton_click(event) {
 
     show_loader($w('#LoadingDots1'))
-    const id = $w("#InputID").value
+    const id = $w("#InputID").value // string
+    // update global 'customerSolution' function
+    customerSolution  = findWhichCustomerSolution(+id)
+
+    console.log("test , ", customerSolution)
+
+    const workspaceSolutions = [
+        () => InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#LoadingDots1'), $w('#CheckmarkHTML1')),
+        () => InitializeWorkspace_VictronSolution_Daily(id, $w('#LoadingDots1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily")),
+        () => InitializeWorkspace_UKMongoDBSolution_Daily('Implement Parameters here')
+    ]
+    const solutionNames = ['Demo', 'Victron', 'UKMongoDB']
+    const indexOfFunctionToExecute = solutionNames.indexOf(customerSolution)
+
+    // execute customer-specific initialization function
+    workspaceSolutions[indexOfFunctionToExecute]()
+    pushGraphDataToPlotter(true, $w("#ChartJsDaily"))
+
+
+    /*
 
     // check first if the inputted ID equals the demo ID
     checkDemoKey(id).then(is_demo => {
@@ -684,7 +658,7 @@ export function InitializeWorkspaceWithIdButton_click(event) {
 
                         const sysCreatedTimestamp = convert_string_to_unix_timestamp(data[0].installationCreationDate)
                         const sysCreatedDate = new Date(format_time(sysCreatedTimestamp));
-                        $w("#datePicker").minDate = sysCreatedDate
+                        $w("#DailyDatePicker").minDate = sysCreatedDate
                         // In format_time(arg), arg has to be a unix timestamp, i.e. in seconds, although it is later converted into milliseconds
                         // So to use this function, we convert the milliseconds the js function Date.now() gives us into seconds.
                         var monthsPassedSinceCreation = calculate_month_difference(new Date(format_time(sysCreatedTimestamp)), new Date(format_time(Date.now()/1000)))
@@ -712,6 +686,8 @@ export function InitializeWorkspaceWithIdButton_click(event) {
                             console.log("start end array:", format_time(startEndArray[0][0]),format_time(startEndArray[0][1]), startEndArray)
                         }*/
 
+                        /*
+
                         getAllEnabledDates_VictronSolution(id,startEndArray).then(results=>{
                             //console.log("RESULTS FROM FETCH: ",results)
                             var enabledDates = []
@@ -722,9 +698,9 @@ export function InitializeWorkspaceWithIdButton_click(event) {
                                     endDate: date
                                 })
                             }
-                            $w("#datePicker").enabledDateRanges = enabledDates
+                            $w("#DailyDatePicker").enabledDateRanges = enabledDates
                             //console.log("enabled dates are --> ",enabledDates)
-                            $w("#datePicker").value = enabledDates[enabledDates.length-1]["startDate"]
+                            $w("#DailyDatePicker").value = enabledDates[enabledDates.length-1]["startDate"]
                         })
 
                     }}
@@ -737,6 +713,8 @@ export function InitializeWorkspaceWithIdButton_click(event) {
 
         }
 
+
+        /*
 
         else if (is_demo){
 
@@ -768,8 +746,8 @@ export function InitializeWorkspaceWithIdButton_click(event) {
                 startDate: new Date(format_time(convert_string_to_unix_timestamp('01/01/2022 00:00'))),
                 endDate: new Date(format_time(convert_string_to_unix_timestamp('12/31/2022 23:59')))
             })
-            $w("#datePicker").enabledDateRanges = enabledDates
-            $w("#datePicker").value = new Date(format_time(convert_string_to_unix_timestamp('06/20/2022 00:01')))
+            $w("#DailyDatePicker").enabledDateRanges = enabledDates
+            $w("#DailyDatePicker").value = new Date(format_time(convert_string_to_unix_timestamp('06/20/2022 00:01')))
 
 
             hide_loader($w('#LoadingDots1'))
@@ -777,11 +755,11 @@ export function InitializeWorkspaceWithIdButton_click(event) {
 
             $w("#NameDerSchule").text = "Demo"
 
-            pushGraphDataToPlotter(useDemoData)
-            $w("#ChartJsDaily").postMessage(["Please clear any existing fits."])
+            pushGraphDataToPlotter(useDemoData, $w("#ChartJsDaily"))
+            $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
 
         }
-    })
+    }) */
 
 
 
@@ -796,15 +774,17 @@ export function xlsButton_click(event) {
     else if (useDemoData){
         var installation = ""
     }
-    const date = $w("#datePicker").value
+    const date = $w("#DailyDatePicker").value
     const correctedDate = date.getDate().toString() + "/" + (date.getMonth()+1).toString() +  "/" + date.getFullYear().toString()
 
     $w("#DownloadCSVhtml").postMessage(["Download CSV File",name+installation+ " " +correctedDate])
 }
 
-
 export function jpgButton_click(event) {
-    setDownloadJPGLink()
+    let userAgent = navigator.userAgent;
+    let browserIsChromiumBased = null
+    browserIsChromiumBased = !!userAgent.match(/chrome|chromium|crios/i);
+    $w("#ChartJsDaily").postMessage(['Download Png.', [browserIsChromiumBased]])
 }
 
 export async function copyGenPoptButton_click(event) {
@@ -846,40 +826,13 @@ export function copyConsumptionPoptButton_click(event) {
 }
 
 
-export function TooltipTrigger1_mouseIn(event) {
-    $w("#TooltipGroup1").show()
-}
-
-
-export function TooltipTrigger1_mouseOut(event) {
-    $w("#TooltipGroup1").hide()
-}
-
-
-export function TooltipTrigger2_mouseIn(event) {
-    $w("#TooltipGroup2").show()
-}
-
-
-export function TooltipTrigger2_mouseOut(event) {
-    $w("#TooltipGroup2").hide()
-}
-
 export function ClearExistingFitsButton_click(event) {
     hide_consumption_fit_dials($w("#PolynomgradSliderVerbrauch"), $w("#VerbrauchPolynomGradSliderBegleitText"),  $w("#TooltipTrigger2"),$w("#functionConsumptionFitTextHTML"), $w("#ParameterConsumptionCodeHTML"),$w("#functionLatexImageConsumption"))
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
     wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
 }
 
-/**
- *	Adds an event handler that runs when the element is clicked.
- [Read more](https://www.wix.com/corvid/reference/$w.ClickableMixin.html#onClick)
- *	 @param {$w.MouseEvent} event
- */
-export function text98_click(event) {
-    $w("#section8").collapse()
-    $w("#section9").expand()
-}
+
 
 
 export function FunctionChoiceConsumptionDropdown_change(event) {
