@@ -367,8 +367,6 @@
         let command = event.data[0]
         let context = event.data[1]
 
-        console.log("Received command: ", command)
-
         if (command === 'Download Png.'){
             const isChromium = context[0]
             download_png(isChromium)

@@ -1,6 +1,6 @@
 import {fetch} from 'wix-fetch';
 import {getSecret} from 'wix-secrets-backend'
-import {format_time} from 'public/graphs-custom-helper-functions.js'
+import {format_time} from '../public/graphs-custom-helper-functions.js'
 import {format_time_short} from "../public/graphs-custom-helper-functions";
 
 const ALL = ['postHttpRequest', 'getAllEnabledDates_VictronSolution', 'findBasicSchoolInformationFromID_VictronSolution',
@@ -191,19 +191,31 @@ export async function findBasicSchoolInformationFromID_VictronSolution(debug,Sit
 /**
  * Fetches time and power data about a victron site and day given the site ID and the chosen day.
  *
- * @param  {Boolean} debug            : Whether to print Debug statements or not.
- * @param  {string} SiteID            : The Victron's Site ID
- * @param  {number} start             : The timestamp representing the beginning of the day to fetch data for.
- * @param  {number} end               : The timestamp representing the end of the day to fetch data for.
+ * @param  {Boolean} debug                  : Whether to print Debug statements or not.
+ * @param  {string} SiteID                  : The Victron's Site ID. Passed as e.g. '$w("#radioGroupInstallations").value'
+ * @param  {object} datePickerValue         : The datetime object representing the chosen date, passed as $w('#DailyDatePicker').value .
  *
- * @return {Promise<any>}                   : Fetched information dictionary on the site and day (generation power and time array.).
+ * @return {Promise<object>}                : A promise that resolves to an object containing the time array as the first,
+ *                                               the generation array as the second, the consumption array (if any) as the third and
+ *                                               dictionary containing triples (or tuples) of said values as the fourth element.
  *
  */
-export async function fetchPowerAndTimeDataForDay_VictronSolution(debug,SiteID, start, end){
+export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, SiteID, datePickerValue){
+
+    console.log("Inputting as : ", datePickerValue)
+
     const mySecret = await getSecret("vrm_API_key");
 
+    const startDatetimeObject = datePickerValue.setHours(0, 0, 0, 0)
+    const endDatetimeObject = datePickerValue.setHours(23, 59, 59, 999)
+
+    const startTimestamp = Math.floor(startDatetimeObject/1000)
+    const endTimestamp = Math.floor(endDatetimeObject/1000)
+
+    console.log("DATE DATE DATE : ", format_time(startTimestamp), " - ", format_time(endTimestamp))
+
     // fetch and manipulate the to be displayed power data
-    const str = `https://vrmapi.victronenergy.com/v2/installations/${SiteID}/widgets/Graph?attributeCodes%5B%5D=from_to_grid&attributeIds%5B%5D=134&instance=0&start=${start}&end=${end}`
+    const str = `https://vrmapi.victronenergy.com/v2/installations/${SiteID}/widgets/Graph?attributeCodes%5B%5D=from_to_grid&attributeIds%5B%5D=134&instance=0&start=${startTimestamp}&end=${endTimestamp}`
 
     return fetch(str,
         {
@@ -216,38 +228,54 @@ export async function fetchPowerAndTimeDataForDay_VictronSolution(debug,SiteID, 
 
         }).then((httpResponse) => {
         //console.log("response received. JSONing data")
-        return httpResponse.json().then(result=>{
+        return httpResponse.json().then( result => {
 
             if (debug===true){
-                console.log("data successfully JSONed. Manipulating data entries. Debug is set to true, so printing whole message.")
-                console.log("full power records non-manipulated: -> ",result, " START", start, " = ",format_time(start)," END", end, " = ", format_time(end))
+                console.log("data inside function 'returnTimeAndPowerArrays_VictronSolution_Daily()' successfully JSONed. Manipulating data entries. Debug is set to true, so printing whole message.")
+                console.log("full power records non-manipulated: -> ",result, " START", startTimestamp, " = ",format_time(startTimestamp)," END", endTimestamp, " = ", format_time(endTimestamp))
             }
+
             const data = result.records.data[134]
             if (data.length!==0){
-                let dataAsObject = [data].map(a => Object.fromEntries(a))[0];
+
+                let dictOfXYZ = [data].map(a => Object.fromEntries(a))[0];
                 // chart js needs an object for its data sth like [{x: '13.3', y: 20}, {x: '22.75', y: 10}]
-                Object.keys(dataAsObject).forEach(function(key, index) {
-                    dataAsObject[key] = Math.abs((dataAsObject[key]-4))
-                    if (dataAsObject[key]<7){dataAsObject[key]=0}
-                    const newKey = format_time(+key).split(" ")[3].split(":")
-                    //delete Object.assign(dataAsObject, {[returnHourArr(newKey)]: dataAsObject[key] })[key];
+                Object.keys(dictOfXYZ).forEach(function(timestamp, index) {
+                    dictOfXYZ[timestamp] = Math.abs((dictOfXYZ[timestamp]-5))
                 });
+
+                const XArray = Object.keys(dictOfXYZ)
+                const YArray = [Object.values(dictOfXYZ)]
+                const ZArray = [[]]
+
+                const lengthOfPowerData = XArray.length
+                const maxRegisteredPowerValue = Math.max(...YArray[0])
 
                 if (debug===true){
                     console.log("From function 'fetchPowerAndTimeDataForDay_VictronSolution': Finished. Data exists. (Length of power array not analyzed here).")
-                    console.log("Manipulated X and Y Value Dict:", dataAsObject)
+                    console.log("Manipulated X and Y Value Dict:", dictOfXYZ)
                 }
-                return dataAsObject
+
+
+                if (lengthOfPowerData < 50 || maxRegisteredPowerValue < 7){
+                    // Bad data, toss [ [], [], [], [] ]
+                    return [ [], [], [], [] ]
+                }
+                else {
+                    return [XArray, YArray, ZArray, dictOfXYZ]
+                }
             }
             else{
                 if (debug===true){
                 console.log("From function 'fetchPowerAndTimeDataForDay_VictronSolution': Finished. No data exists.")
-                return "noData"
                 }
+                // no data registered.
+                return null
             }
 
 
-        }).catch(er=>{console.log("something went wrong when json-ing the data ",er)})
+        }).catch(er=>{console.log("Something went wrong inside the 'fetchPowerAndTimeDataForDay_VictronSolution()' function (backend), when json-ing the data. It may be, " +
+            "that the http call was not successful. For further information set debug to true.  ",er)})
     })
         .catch(ex => {console.error("Error when fetching download data!",ex)})
 

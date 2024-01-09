@@ -17,15 +17,16 @@ import {
     hide_loader
 } from "../graphs-element-manipulation-functions";
 
-const ALL = ['returnTimeAndPowerArrays_DemoSolution_Daily', 'postMessageToChartJsUpdateTimeArray_DemoSolution_Daily',
-                        'createAndStoreCsvBlobInButton_DemoSolution_Daily', 'findAndProcessData_DemoSolution_Daily']
+const ALL = ['returnTimeAndPowerArrays_DemoSolution_Daily', 'postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily',
+                        'createAndStoreCsvBlobInButton_GeneralSolution_Daily', 'findAndProcessData_DemoSolution_Daily',
+                    'InitializeWorkspace_DemoSolution_Daily']
 
 /**
  * Used to update the respective global variables of time, generation power and optionally consumption power.
  *
- * @param  {string} datePickerValue            : The string representing the chosen date, value of the datepicker element.
+ * @param  {object} datePickerValue            : The datetime object representing the chosen date, value of the datepicker element.
  *
- * @return {Promise<Object>}                   : A promise that resolves to an object containing the time array as the first,
+ * @return {Promise<object>}                   : A promise that resolves to an object containing the time array as the first,
  *                                               the generation array as the second, the consumption array as the third and
  *                                               dictionary containing triples of said values as the fourth element.
  *
@@ -86,8 +87,14 @@ export async function returnTimeAndPowerArrays_DemoSolution_Daily(datePickerValu
  *                                               dictionary containing triples of said values as the fourth element.
  *
  */
-export function postMessageToChartJsUpdateTimeArray_DemoSolution_Daily(chartJsInstance, XArray){
-    chartJsInstance.postMessage(["UniversalXarrayUpdate",XArray.map(el=>convert_time_string_to_int(format_time(el)))])
+export function postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray){
+    chartJsInstance.postMessage([
+            "Update universal x array (timestamps).",
+            [
+                XArray.map( el => convert_time_string_to_int ( format_time ( el ) ) )
+            ]
+    ]
+    )
 }
 
 /**
@@ -102,11 +109,9 @@ export function postMessageToChartJsUpdateTimeArray_DemoSolution_Daily(chartJsIn
  *
  */
 
-export function createAndStoreCsvBlobInButton_DemoSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray){
+export function createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray){
     let language = wixWindowFrontend.multilingual.currentLanguage; // "en" or "es" or "de"
     let csv_columns_multilingual = ''
-
-    console.log("language test: ", language)
 
     if (language==="es"){
         csv_columns_multilingual = "Registró temporal;"+"Generacíon de energía en vatios;"+"Consumo de energía en vatios"+"\n"
@@ -121,9 +126,6 @@ export function createAndStoreCsvBlobInButton_DemoSolution_Daily(CsvDownloadButt
     const zipOfYAndZ = zip([YArray[0], ZArray[0]])
     const zipOfXYZForCsv = zip([XArray.map(el=>'='+'"'+format_time_short(el).toString()+'"'), zipOfYAndZ])
 
-    console.log("zipOfYAndZ ", zipOfYAndZ)
-    console.log("zipOfXYZForCsv ", zipOfXYZForCsv)
-
     for (const i of zipOfXYZForCsv){
         // fill the columns with data.
         csv_columns_multilingual += i[0] + ";" + i[1][0] + ";" + i[1][1]
@@ -135,10 +137,10 @@ export function createAndStoreCsvBlobInButton_DemoSolution_Daily(CsvDownloadButt
 }
 
 /**
- * Encompasses the three functions 'returnTimeAndPowerArrays_DemoSolution_Daily()', 'postMessageToChartJsUpdateTimeArray_DemoSolution_Daily()'
- * and 'createAndStoreCsvBlobInButton_DemoSolution_Daily()' into one.
+ * Encompasses the three functions 'returnTimeAndPowerArrays_DemoSolution_Daily()', 'postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily()'
+ * and 'createAndStoreCsvBlobInButton_GeneralSolution_Daily()' into one.
  *
- * @param  {string}     datePickerValue            : The string representing the chosen date, value of the datepicker element.
+ * @param  {object}     datePickerValue            : The datetime object representing the chosen date, value of the datepicker element.
  * @param  {Element}    chartJsInstance            : The chart js instance grabbed with '$w("...")'
  * @param  {Element}    CsvDownloadButtonElement   : The button at which the csv blob is stored, grabbed by '$w("...")'. E.g. $w("#DownloadCSVhtml").
  *
@@ -148,8 +150,8 @@ export function createAndStoreCsvBlobInButton_DemoSolution_Daily(CsvDownloadButt
 export function findAndProcessData_DemoSolution_Daily(datePickerValue,chartJsInstance, CsvDownloadButtonElement){
     return returnTimeAndPowerArrays_DemoSolution_Daily(datePickerValue).then(result => {
         const [XArray, YArray, ZArray, dictOfXYZ] = result
-        postMessageToChartJsUpdateTimeArray_DemoSolution_Daily(chartJsInstance, XArray)
-        createAndStoreCsvBlobInButton_DemoSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
+        postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
+        createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
         return dictOfXYZ
 
     })
@@ -169,7 +171,7 @@ export function findAndProcessData_DemoSolution_Daily(datePickerValue,chartJsIns
  * @param   {Element}   Loader                     : Something like $w('#LoadingDots1').
  * @param   {Element}   Checkmark                  : Something like $w('#CheckmarkHTML1').
  *
- * @return {void}
+ * @return {string}
  *
  */
 export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, RadioGroupInstallations, DailyDatePicker, NameOfSchoolText, DailyChartJSInstance, Loader, Checkmark){
@@ -208,5 +210,7 @@ export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, 
 
         NameOfSchoolText.text = "Demo"
         DailyChartJSInstance.postMessage(["Clear any existing fits.", []])
+
+        return 'success'
 
 }

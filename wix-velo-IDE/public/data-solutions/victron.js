@@ -7,15 +7,22 @@ import {
 } from "../graphs-element-manipulation-functions";
 
 import {
-    findBasicSchoolInformationFromID_VictronSolution, getAllEnabledDates_VictronSolution
+    findBasicSchoolInformationFromID_VictronSolution,
+    getAllEnabledDates_VictronSolution,
+    returnTimeAndPowerArrays_VictronSolution_Daily
 } from "../../backend/custom-http";
 
 import {
-    convert_string_to_unix_timestamp, format_time
+    convert_string_to_unix_timestamp, convert_time_string_to_int, format_time, format_time_short, zip
 } from "../graphs-custom-helper-functions";
+import {
+    createAndStoreCsvBlobInButton_GeneralSolution_Daily,
+    postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily
+} from "./demo";
 
 
-const ALL = ['returnPowerData_VictronSolution', 'InitializeWorkspace_VictronSolution_Daily', 'constructStartEndArray_VictronSolution']
+const ALL = ['returnPowerData_VictronSolution', 'InitializeWorkspace_VictronSolution_Daily', 'constructStartEndArray_VictronSolution',
+                    'findAndProcessData_VictronSolution_Daily']
 
 /**
  * Converts a unix timestamp fetched from the Victron vrm api to a string representing the actual date.
@@ -45,12 +52,12 @@ export function returnPowerData_VictronSolution(data){
  * @param   {Element}   nameOfSchoolText           : Something like $w("#NameDerSchule").
  * @param   {Element}   dailyChartJSInstance       : Something like $w("#ChartJsDaily")
  *
- * @return {void}
+ * @return {Promise<string>}    A promise that resolves to 'failure' or 'success'
  *
  */
 export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossmarkInstance,checkmarkInstance,  globalInformationWindow, radioGroupInstallations, dailyDatePicker, nameOfSchoolText, dailyChartJSInstance) {
 
-    findBasicSchoolInformationFromID_VictronSolution(false , siteID).then(data =>{
+    return findBasicSchoolInformationFromID_VictronSolution(false , siteID).then(data =>{
         // hide the loading dots, then determine whether site associated with ID was found
         hide_loader(loader)
         let listOfInstallationsOfSite = Object.keys(data)
@@ -58,7 +65,7 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
             // handle error: "No Site found."
             crossmark(crossmarkInstance)
             global_information_window_log_in_failure(globalInformationWindow)
-            return null
+            return 'failure'
         }
         else {
             // handle success: "Site was found."
@@ -89,8 +96,7 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
 
             // now fill the calendar only with those dates on which data exists!
             const startEndArray = constructStartEndArray_VictronSolution(timestampCreationInstallation)
-            getAllEnabledDates_VictronSolution(siteID, startEndArray).then(results => {
-                console.log(" Results: ", results.map(el => format_time(el)))
+            return getAllEnabledDates_VictronSolution(siteID, startEndArray).then(results => {
                 let enabledDates = []
                 for (const enabledDateUnixTimestamp of results){
                     const enabledDateDatetimeObject = new Date(enabledDateUnixTimestamp * 1000)
@@ -101,7 +107,9 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
                 }
                 dailyDatePicker.enabledDateRanges =  enabledDates
                 // set standard value for the day as the last day at which data was found
-                dailyDatePicker.value =  enabledDates[enabledDates.length-1]["startDate"]
+                const lastIndex = enabledDates.length-1
+                dailyDatePicker.value =  enabledDates[lastIndex]["startDate"]
+                return 'success'
             })
 
         }
@@ -111,7 +119,7 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
 
 /**
  * Constructs the 'startEndArray' object that is to be used inside the 'InitializeWorkspace_VictronSolution_Daily()' function (this file).
- * It is to be use in there, because that is where 'findBasicSchoolInformationFromID_VictronSolution()' is called and in the '.then()' callback
+ * It is to be used in that file, because that is where 'findBasicSchoolInformationFromID_VictronSolution()' is called and in the '.then()' callback
  * of that function, there is access to the 'timestampCreationInstallation' constant, which is needed to properly construct this array.
  * This array is compatible with and gets passed as an argument to the 'getAllEnabledDates_VictronSolution()' function, from the file
  * 'custom-http.jsx'. The latter function is, again, called inside the 'findBasicSchoolInformationFromID_VictronSolution()' '.then()' callback.
@@ -180,5 +188,35 @@ function constructStartEndArray_VictronSolution(unixTimestampCreationInstallatio
     }
 
     return startEndArray
+
+}
+
+
+
+/**
+ * Encompasses the three functions 'custom-http.jsx/returnTimeAndPowerArrays_VictronSolution_Daily()', 'postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily()'
+ * and 'createAndStoreCsvBlobInButton_GeneralSolution_Daily()' into one.
+ *
+ * @param  {object}     datePickerValue            : The datetime object representing the chosen date, value of the datepicker element.
+ * @param  {string}     SiteID                     : The Victron's Site ID. Passed as e.g. '$w("#radioGroupInstallations").value'
+ * @param  {Element}    chartJsInstance            : The chart js instance grabbed with '$w("...")'
+ * @param  {Element}    CsvDownloadButtonElement   : The button at which the csv blob is stored, grabbed by '$w("...")'. E.g. $w("#DownloadCSVhtml").
+ *
+ * @return {Promise<object>}    : A promise that resolves to a dictionary object containing triples of x, y and z values (time, generation, consumption).
+ *
+ */
+export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID, chartJsInstance, CsvDownloadButtonElement){
+    console.log("Date that is passed to 'victron.js/findAndProcessData_VictronSolution_Daily()' function: ",  datePickerValue)
+    return returnTimeAndPowerArrays_VictronSolution_Daily(false,SiteID, datePickerValue).then(result => {
+        console.log("I FOOOUND : ", result)
+        const [XArray, YArray, ZArray, dictOfXYZ] = result
+        postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
+        createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
+        return dictOfXYZ
+
+    })
+}
+
+export function fineTuneEnabledDateRanges_VictronSolution_Daily(){
 
 }

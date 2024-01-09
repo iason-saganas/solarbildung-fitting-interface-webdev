@@ -50,7 +50,7 @@ import {
 } from 'backend/custom-media-backend'
 
 import {
-    fetchPowerAndTimeDataForDay_VictronSolution,
+    returnTimeAndPowerArrays_VictronSolution_Daily,
     postHttpRequest,
     findBasicSchoolInformationFromID_VictronSolution,
     getAllEnabledDates_VictronSolution
@@ -95,6 +95,7 @@ import {
 } from "public/data-solutions/demo";
 
 import {
+    findAndProcessData_VictronSolution_Daily,
     InitializeWorkspace_VictronSolution_Daily
 } from "public/data-solutions/victron";
 
@@ -169,44 +170,69 @@ var customerSolution = 'Victron'
 /*
 
                             B A S I C   F U N C T I O N S
-    Important functions that cannot be pushed into backend or public files since they directly reference elements of the html interface of
-    the current webpage.
+    Central functions dealing with pulling and presenting data on the interface.
 */
 
 
 
-/*
- * Dependent on function 'returnPowerData(debug)', which needs to be on this code site.
- * Calls 'returnPowerData(debug)' and then posts queried time and generation data to 'ChartJsDaily' (chart js plotter) object.
- * @param   None
- * @return  None
+/**
+ * Pushes a command to the chartJsElement instance to update the figure with the provided data.
+ *
+ * @param   {Element} chartJsElement  :   Something like $w('#ChartJsDaily') or $W('#ChartJsWeekly')
+ * @param   {object} dataDictionary   :   A dictionary containing tuples or triples (if z is included) of time, power and consumption data (if any).
+ *
+ * @return  {void}
  */
-function pushGraphDataToPlotter(isDemo, chartJsElement){
-    returnPowerData(false, isDemo, customerSolution).then(dict=>{
+function pushGraphDataToPlotter(chartJsElement, dataDictionary){
         if (customerSolution !== 'Demo'){
             // dict contains x and y values
-            chartJsElement.postMessage(["Time and generation data, non-demo.",dict])
+            chartJsElement.postMessage(["Time and generation data, non-demo.",dataDictionary])
         }
         else if (customerSolution === 'Demo'){
             // dict contains x, y and z values
-            chartJsElement.postMessage(["Time, generation and consumption data, demo.",dict])
+            chartJsElement.postMessage(["Time, generation and consumption data, demo.",dataDictionary])
         }
-    })
 }
 
 
-/*  The customer-specific query data function, catching time stamps and generation data for the current constraints on the web page (date, installation).
- *  Hides/shows necessary accessories.
- * @param   {bool}      debug                 :   If true, various debug statements are printed.
- * @return  {object}    DictOfXandYvalues     :   A dictionary object containing timestamps and generation (y-) values for the given date.
+/** The customer-specific query data function, catching time stamps and generation data for the current constraints on the web page (date, installation).
+ *  Hides/shows some necessary accessories. Activates one of the functions 'findAndProcessData_<CustomerSolution>_Daily', dependent on the currently
+ *  in-use customer-solution, which is set by the global variable 'customerSolution' (as of 06.01.24). The retrieved object acts as the argument
+ *  'dataDictionary' for the function 'pushGraphDataToPlotter()'.
+ *
+ * @param   {boolean}   debug                 :     If true, various debug statements are printed.
+ * @param   {object}    date                  :     The currently picked daily datetime object grabbed as '$w("#DailyDatePicker").value'.
+ * @param   {string}    SiteID                :     The installation id to look data for if any, passed as a string.
+ *
+ * @return  {Promise<object>}                 :     A promise that resolves to a data dictionary object containing triples of x, y and z values (if any) (time, generation, consumption (if any)).
  */
-function returnPowerData(debug, is_demo, currentCustomerSolution){
-    $w("#copyGenPoptButton").hide()
+function returnPowerData(debug, date, SiteID){
 
     initialize_fit_results_texts($w("#EnergieKontrollErgebnis"), $w("#AbweichungDesIntegrals"), $w("#Nullstellen"), $w("#GrenzenFitintervall"))
     wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
 
-    const date = $w("#DailyDatePicker").value
+    // Solving a bug by setting hours of datetime object from '00:00:000' to noon. Otherwise, somewhere in the chain of the function calls in the backend a millisecond is subtracted,
+    // giving us the data of the day before the actual date.
+    date.setHours(12, 0, 0 , 0)
+    console.log("----> Inputting date: ", date)
+
+    const dataSolutions = [()=>{
+        return findAndProcessData_DemoSolution_Daily(date, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
+        },
+        () => {
+         return findAndProcessData_VictronSolution_Daily(date, SiteID, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
+        },
+        () => {
+         // pass, UKMongoDB data solution
+        }]
+
+    const solutionNames = ['Demo', 'Victron', 'UKMongoDB']
+    const indexOfFunctionToExecute = solutionNames.indexOf(customerSolution) // global function
+
+    // execute customer-specific data solution function
+    return dataSolutions[indexOfFunctionToExecute]()
+
+    /*
 
     if (!is_demo && currentCustomerSolution === 'Victron'){
         let YesterdayTimeStamp = date.getTime() - 86400000;
@@ -218,21 +244,21 @@ function returnPowerData(debug, is_demo, currentCustomerSolution){
 
 
 
-        return fetchPowerAndTimeDataForDay_VictronSolution(debug,installation_id,convert_string_to_unix_timestamp(correctedDateDayBefore),convert_string_to_unix_timestamp(correctedDateCurrent)).then(DictOfXandYvalues=>{
+        return returnTimeAndPowerArrays_VictronSolution_Daily(debug,installation_id,convert_string_to_unix_timestamp(correctedDateDayBefore),convert_string_to_unix_timestamp(correctedDateCurrent)).then(DictOfXandYvalues=>{
 
             const lengthOfPowerData = Object.keys(DictOfXandYvalues).length
 
 
             if (lengthOfPowerData<50 || DictOfXandYvalues=="NoData" || Math.max(...Object.values(DictOfXandYvalues))<7){
-                /*$w("#errorGroup").show()
-                $w("#HTTPupdateBox").hide()*/
+                //$w("#errorGroup").show()
+                //$w("#HTTPupdateBox").hide()
                 //console.log("The returned data list is empty or too small. It is set manually to []")
                 return []
             }
             else {
-                /*$w("#htmlLoadingCircle").postMessage(["click toggle button"])
-                setTimeout(()=>{ $w("#HTTPupdateBox").hide() },1000);
-                setTimeout(()=>{ $w("#htmlLoadingCircle").postMessage(["untoggle"]) },1200);*/
+                //$w("#htmlLoadingCircle").postMessage(["click toggle button"])
+                //setTimeout(()=>{ $w("#HTTPupdateBox").hide() },1000);
+                //setTimeout(()=>{ $w("#htmlLoadingCircle").postMessage(["untoggle"]) },1200);
                 globalXArray.length = 0
                 globalYArray.length = 0
                 for (const key of Object.keys(DictOfXandYvalues)){globalXArray.push(+key)}
@@ -251,13 +277,8 @@ function returnPowerData(debug, is_demo, currentCustomerSolution){
                 return DictOfXandYvalues
             }
         })
-    }
+    }  */
 
-
-    else if (currentCustomerSolution === "Demo"){
-
-        return findAndProcessData_DemoSolution_Daily(date, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
-    }
 }
 
 function update_calendar_based_on_mode(){
@@ -563,16 +584,27 @@ export function FunctionChoiceDropDown_change(event) {
     }
 }
 
-
-export function DailyDatePicker_change(event) {
-    pushGraphDataToPlotter(useDemoData, $w("#ChartJsDaily"))
-    $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+/**
+ * Combines the data gathering function 'returnPowerData(datepicker.value)' with the function pushing the data to the plotter
+ * and some stylistic manipulations.
+ * */
+function findAndFillWithData_Daily(){
+    $w('Loader2Daily').show()
+    const currentlySelectedDate = $w('#DailyDatePicker').value
+    returnPowerData(false, currentlySelectedDate, $w("#radioGroupInstallations").value).then(dataDictionary => {
+        $w('Loader2Daily').hide()
+        pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
+        $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+    })
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
 }
 
+export function DailyDatePicker_change(event) {
+    findAndFillWithData_Daily()
+}
+
 export function radioGroupInstallations_change(event) {
-    $w("#errorGroup").hide()
-    pushGraphDataToPlotter(useDemoData,$w("#ChartJsDaily"))
+    findAndFillWithData_Daily()
 }
 
 export function OverviewOptionButton_click(event) {
@@ -598,168 +630,32 @@ export function OverviewOptionButton_click(event) {
 
 export function InitializeWorkspaceWithIdButton_click(event) {
 
-    show_loader($w('#LoadingDots1'))
+    show_loader($w('#Loader1'))
     const id = $w("#InputID").value // string
     // update global 'customerSolution' function
     customerSolution  = findWhichCustomerSolution(+id)
 
-    console.log("test , ", customerSolution)
-
     const workspaceSolutions = [
-        () => InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#LoadingDots1'), $w('#CheckmarkHTML1')),
-        () => InitializeWorkspace_VictronSolution_Daily(id, $w('#LoadingDots1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily")),
-        () => InitializeWorkspace_UKMongoDBSolution_Daily('Implement Parameters here')
+        () => Promise.resolve(InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#Loader1'), $w('#CheckmarkHTML1'))),
+        () => InitializeWorkspace_VictronSolution_Daily(id, $w('#Loader1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily")),
+        //() => InitializeWorkspace_UKMongoDBSolution_Daily('Implement Parameters here')
     ]
     const solutionNames = ['Demo', 'Victron', 'UKMongoDB']
     const indexOfFunctionToExecute = solutionNames.indexOf(customerSolution)
 
     // execute customer-specific initialization function
-    workspaceSolutions[indexOfFunctionToExecute]()
-    pushGraphDataToPlotter(true, $w("#ChartJsDaily"))
+    // if the return type of the selected function is a promise, that call to grab the value of the datepicker and push the graph data of that day to the plotter
+    // needs to be inside a '.then()' callback, in order for the correct enabled date range to have 'settled in'; Otherwise the synchronous code runs and the datepicker
+    // value is called to soon! The 'InitializeWorkspace_DemoSolution_Daily' is a synchronous function, all others are async and return a promise that resolve to a string
+    // (either 'success' or 'failure').
 
-
-    /*
-
-    // check first if the inputted ID equals the demo ID
-    checkDemoKey(id).then(is_demo => {
-
-        if (!is_demo){
-
-            useDemoData = false
-            // not a demo => Initialize school from ID normally
-
-            if (customerSolution==='Victron'){
-                findBasicSchoolInformationFromID_VictronSolution(false,id).then(data =>{
-
-                    hide_loader($w('#LoadingDots1'))
-
-                    if (Object.keys(data).length==0){
-                        // Failure: No data registered with inputted ID
-                        crossmark($w('#CrossmarkHTML1'))
-                        global_information_window_log_in_failure($w('#GlobalInformationWindow'))
-                        return null
-                    }
-                    else {
-                        // Success -> Style
-                        checkmark($w('#CheckmarkHTML1'))
-                        global_information_window_log_in_success($w('#GlobalInformationWindow'))
-                        $w("#radioGroupInstallations").enable()
-
-                        $w("#NameDerSchule").text = data[0].installationName.split(",")[0]+", "+ data[0].installationName.split(",")[1]
-                        let radioOptions = []
-                        for (const i of Object.keys(data)){
-                            radioOptions.push({"label": data[i].installationName.split(",")[2], "value": data[i].installationID.toString()})
-                        }
-                        if (Object.keys(data).length>1){
-                            radioOptions.push({"label": "Summe (in Bearb.)", "value": "000000"})
-                        }
-
-                        $w("#radioGroupInstallations").options = radioOptions;
-
-                        const sysCreatedTimestamp = convert_string_to_unix_timestamp(data[0].installationCreationDate)
-                        const sysCreatedDate = new Date(format_time(sysCreatedTimestamp));
-                        $w("#DailyDatePicker").minDate = sysCreatedDate
-                        // In format_time(arg), arg has to be a unix timestamp, i.e. in seconds, although it is later converted into milliseconds
-                        // So to use this function, we convert the milliseconds the js function Date.now() gives us into seconds.
-                        var monthsPassedSinceCreation = calculate_month_difference(new Date(format_time(sysCreatedTimestamp)), new Date(format_time(Date.now()/1000)))
-                        //console.log("moths passed since creation: ",monthsPassedSinceCreation)
-                        monthsPassedSinceCreation = +(monthsPassedSinceCreation.toString())
-                        const fullFiveMonthsToAdd = Math.floor(monthsPassedSinceCreation/5)
-                        //console.log("full five months to add:", fullFiveMonthsToAdd)
-
-                        if ((monthsPassedSinceCreation/5)%1!=0){
-                            //console.log("there exists remainder months to add")
-                            var RemainderFiveMonthsToAdd = (monthsPassedSinceCreation/5)%1
-                            //console.log("Remainder months: ",RemainderFiveMonthsToAdd)
-                        }
-
-                        var startEndArray = []
-                        if (fullFiveMonthsToAdd!=0){
-                            for (const i of [...Array(fullFiveMonthsToAdd).keys()]){
-                                if (i==0){startEndArray.push([sysCreatedTimestamp,convert_string_to_unix_timestamp(add_months_to_date(sysCreatedDate,5*(i+1)))])}
-                                if (i>0){startEndArray.push([startEndArray[i-1][1],convert_string_to_unix_timestamp(add_months_to_date(new Date(format_time(startEndArray[i-1][0])),5*(i+1)))])}
-
-                            }}
-                        //console.log("start end array:", format_time(startEndArray[0][0]),format_time(startEndArray[0][1]), startEndArray)
-                        /*if (RemainderFiveMonthsToAdd){
-                            startEndArray = [[startEndArray[startEndArray.length-1][1],convert_string_to_unix_timestamp(AddMonthsToDate(new Date(format_time(startEndArray[startEndArray.length-1][1])),Math.ceil(5*RemainderFiveMonthsToAdd)-1))]]
-                            console.log("start end array:", format_time(startEndArray[0][0]),format_time(startEndArray[0][1]), startEndArray)
-                        }*/
-
-                        /*
-
-                        getAllEnabledDates_VictronSolution(id,startEndArray).then(results=>{
-                            //console.log("RESULTS FROM FETCH: ",results)
-                            var enabledDates = []
-                            for (const i of results) {
-                                const date = new Date(format_time(i))
-                                enabledDates.push({
-                                    startDate: date,
-                                    endDate: date
-                                })
-                            }
-                            $w("#DailyDatePicker").enabledDateRanges = enabledDates
-                            //console.log("enabled dates are --> ",enabledDates)
-                            $w("#DailyDatePicker").value = enabledDates[enabledDates.length-1]["startDate"]
-                        })
-
-                    }}
-                )
-            }
-            else if (customerSolution === 'UnitedKingdomMongoDB'){
-                // pass, implement in the future
-            }
-
-
+    workspaceSolutions[indexOfFunctionToExecute]().then(result => {
+        if (result !=='failure' ){
+            // for the default date, find the data and push it to chart.JS plotter
+            findAndFillWithData_Daily()
         }
+    })
 
-
-        /*
-
-        else if (is_demo){
-
-            // is the demo; Grab the data from the master demo csv data instead of using the VRM api.
-            useDemoData = true
-            checkmark($w('#CheckmarkHTML1'))
-            global_information_window_log_in_success($w('#GlobalInformationWindow'))
-
-            let language = wixWindowFrontend.multilingual.currentLanguage; // "en" or "es" or "de"
-            if (language=="es"){
-                var radio_label = "Techado"
-            }
-            else if (language=="en"){
-                var radio_label = "Roof"
-            }
-            else if (language=="de"){
-                var radio_label = "Dach"
-            }
-
-
-            $w("#radioGroupInstallations").enable()
-            var radioOptions = [{"label": `${radio_label}`, "value":"000000"}]
-            $w("#radioGroupInstallations").options = radioOptions;
-            $w("#radioGroupInstallations").selectedIndex = 0 // sets "roof" to be auto-selected for demo data
-
-
-            var enabledDates = []
-            enabledDates.push({
-                startDate: new Date(format_time(convert_string_to_unix_timestamp('01/01/2022 00:00'))),
-                endDate: new Date(format_time(convert_string_to_unix_timestamp('12/31/2022 23:59')))
-            })
-            $w("#DailyDatePicker").enabledDateRanges = enabledDates
-            $w("#DailyDatePicker").value = new Date(format_time(convert_string_to_unix_timestamp('06/20/2022 00:01')))
-
-
-            hide_loader($w('#LoadingDots1'))
-            checkmark($w('#CheckmarkHTML1'))
-
-            $w("#NameDerSchule").text = "Demo"
-
-            pushGraphDataToPlotter(useDemoData, $w("#ChartJsDaily"))
-            $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
-
-        }
-    }) */
 
 
 
