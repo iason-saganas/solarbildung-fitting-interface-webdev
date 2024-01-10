@@ -71,7 +71,7 @@ export async function postHttpRequest(url, message){
  *         "from_to_grid": [
  *             [
  *                  // Timestamp for day at which data was found in MILLISECONDS (Javascript format). The hours of this timestamp is exactly equal to the hours of the 'start' parameter,
- *                  // Float, that I think represents the average power value for that day, e.g. -2.756145
+ *                  // Float, that I think represents the last samppled power value for that day, e.g. -2.756145
  *             ],
  *             [
  *                 // second day etc.
@@ -123,11 +123,8 @@ export async function getAllEnabledDates_VictronSolution(siteID,startEndArray){
             const records = data.records.from_to_grid
             if (records!==false){
                 for (const record of records){
-                    const [timestampJSDataWasFoundFor, averagePowerFound] = record
-                    if (averagePowerFound > -0.3 ){
-                        console.log("Sth smells fishy... average power found:", averagePowerFound, " at timestamp: ", format_time_short(Math.floor(timestampJSDataWasFoundFor/1000)))
-                    }
-                    if (averagePowerFound != null){
+                    const [timestampJSDataWasFoundFor, lastSampledPowerVal] = record
+                    if (lastSampledPowerVal != null){
                         allEnabledDates.push(Math.floor(timestampJSDataWasFoundFor/1000))
                     }
                 }}
@@ -202,8 +199,6 @@ export async function findBasicSchoolInformationFromID_VictronSolution(debug,Sit
  */
 export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, SiteID, datePickerValue){
 
-    console.log("Inputting as : ", datePickerValue)
-
     const mySecret = await getSecret("vrm_API_key");
 
     const startDatetimeObject = datePickerValue.setHours(0, 0, 0, 0)
@@ -212,7 +207,6 @@ export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, Site
     const startTimestamp = Math.floor(startDatetimeObject/1000)
     const endTimestamp = Math.floor(endDatetimeObject/1000)
 
-    console.log("DATE DATE DATE : ", format_time(startTimestamp), " - ", format_time(endTimestamp))
 
     // fetch and manipulate the to be displayed power data
     const str = `https://vrmapi.victronenergy.com/v2/installations/${SiteID}/widgets/Graph?attributeCodes%5B%5D=from_to_grid&attributeIds%5B%5D=134&instance=0&start=${startTimestamp}&end=${endTimestamp}`
@@ -238,11 +232,43 @@ export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, Site
             const data = result.records.data[134]
             if (data.length!==0){
 
-                let dictOfXYZ = [data].map(a => Object.fromEntries(a))[0];
-                // chart js needs an object for its data sth like [{x: '13.3', y: 20}, {x: '22.75', y: 10}]
-                Object.keys(dictOfXYZ).forEach(function(timestamp, index) {
-                    dictOfXYZ[timestamp] = Math.abs((dictOfXYZ[timestamp]-5))
-                });
+                // data is something like [unixTimestamp1, powerVal1], [unixTimestamp2, powerVal2], etc. For the object conversion to work,
+                // you need to wrap it into an extra pair of brackets, otherwise data[0] = [unixTimestamp1, powerVal1] and the dataEl of that
+                // are unixTimestamp1 and powerVal1 instead of the i-th unixTimestamp and the i-th powerVal.
+                let dictOfXYZ = [data].map(dataEl => Object.fromEntries(dataEl))[0]
+
+
+                /*
+                * Manipulate the data dictionary.
+                *
+                * Bad data:                 The max power values are under 6 Watts. In that case, the eigenconsumption of the data logger is equal or bigger than the solar yield
+                *                           and a continuous band forms, alternating between the values 0 W and 6 W. Bad data is also when the number of data points is under 288.
+                *                           288 is the number of registered data points in 24 hours if the power is sampled every 5 minutes. This is often the case, when the
+                *                           data logger was not working yesterday and then suddenly revives e.g. at noon the next day. We will use '50' (for no particular reason
+                *                           besides than it being smaller than 288) as the threshold of when the number of data points is too small to be counted as good data.
+                *
+                * Good data:                Not bad data.
+                *
+                * Good data manipulation:   -   Victron returns the power values as negative floats => Take the absolute value.
+                *                           -   Subtract the eigenconsumption noise (about 6 W) of the data logger
+                *
+                * Bad data manipulation     -   Victron returns the power values as negative floats => Take the absolute value.
+                *                           -   Do *NOT* subtract the eigenconsumption noise (about 6 W) of the data logger
+                *
+                * Reason for not subtracting noise in case of bad data: User Experience. Explanation: If noise is subtracted, on days with bad data,
+                * the chart.js plotter shows an empty plot. This way, not an empty plot is shown, but the bad data itself and the user can recognize that
+                * there is not nothing there (because victron doesn't filter out bad data like this, after the http call, days with bad data are marked as
+                * 'available' in the date picker!). In course of the lifetime of the code, the function 'victron.js/fineTuneEnabledDateRanges_VictronSolution_Daily()'
+                * iterates over all enabled dates, searches for bad dates, and disables them one by one. On initialization, a window pops up on the web app that
+                * displays the message 'While you work, we optimize the enabled date ranges so only relevant data is shown to you'. This message refers
+                * to this lifecycle.
+                *
+                * */
+
+                // Take the modulus in each case
+                Object.keys(dictOfXYZ).forEach(function (timestamp, number){
+                    dictOfXYZ[timestamp] = Math.abs((dictOfXYZ[timestamp]))
+                })
 
                 const XArray = Object.keys(dictOfXYZ)
                 const YArray = [Object.values(dictOfXYZ)]
@@ -251,19 +277,27 @@ export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, Site
                 const lengthOfPowerData = XArray.length
                 const maxRegisteredPowerValue = Math.max(...YArray[0])
 
+                // checking it its under 30 W instead of 6W, just to be sure
+                if (lengthOfPowerData < 287 || maxRegisteredPowerValue < 30){
+                    // Bad data recognize, display as is
+                }
+                else {
+                    // Good data => Subtract noise
+                    Object.keys(dictOfXYZ).forEach(function (timestamp, number){
+                        dictOfXYZ[timestamp] = dictOfXYZ[timestamp] - 6
+                        if ( dictOfXYZ[timestamp] < 6 ){
+                            dictOfXYZ[timestamp] = 0
+                        }
+                    })
+
+                }
+
                 if (debug===true){
                     console.log("From function 'fetchPowerAndTimeDataForDay_VictronSolution': Finished. Data exists. (Length of power array not analyzed here).")
                     console.log("Manipulated X and Y Value Dict:", dictOfXYZ)
                 }
 
-
-                if (lengthOfPowerData < 50 || maxRegisteredPowerValue < 7){
-                    // Bad data, toss [ [], [], [], [] ]
-                    return [ [], [], [], [] ]
-                }
-                else {
-                    return [XArray, YArray, ZArray, dictOfXYZ]
-                }
+                return [XArray, YArray, ZArray, dictOfXYZ]
             }
             else{
                 if (debug===true){

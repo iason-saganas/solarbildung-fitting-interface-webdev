@@ -13,7 +13,7 @@ import {grabDemoDataFromMasterCSV} from "../../backend/custom-media-backend";
 import wixWindowFrontend from 'wix-window-frontend';
 import {
     checkmark,
-    global_information_window_log_in_success,
+    global_information_window_log_in_success_generic,
     hide_loader
 } from "../graphs-element-manipulation-functions";
 
@@ -176,7 +176,7 @@ export function findAndProcessData_DemoSolution_Daily(datePickerValue,chartJsIns
  */
 export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, RadioGroupInstallations, DailyDatePicker, NameOfSchoolText, DailyChartJSInstance, Loader, Checkmark){
 
-        global_information_window_log_in_success(GlobalInformationWindow)
+        global_information_window_log_in_success_generic(GlobalInformationWindow)
         hide_loader(Loader)
         checkmark(Checkmark)
 
@@ -196,7 +196,7 @@ export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, 
 
 
         RadioGroupInstallations.enable()
-        RadioGroupInstallations.options = [{"label": `${radio_label}`, "value": "000000"}];
+        RadioGroupInstallations.options = [{"label": `${radio_label}`, "value": "727738"}];
         RadioGroupInstallations.selectedIndex = 0 // sets "roof" to be auto-selected for demo data
 
 

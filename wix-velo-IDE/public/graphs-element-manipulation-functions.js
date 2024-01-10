@@ -1,6 +1,6 @@
 
-const ALL_STYLISTIC = ['hide_element', 'global_information_window_update_attributes', 'global_information_window_log_in_success',
-                        'global_information_window_log_in_failure', 'checkmark', 'crossmark', 'show_loader', 'hide_loader',
+const ALL_STYLISTIC = ['hide_element', 'global_information_window_update_attributes', 'global_information_window_log_in_success_generic',
+                        'global_information_window_log_in_success_victron','global_information_window_log_in_failure', 'checkmark', 'crossmark', 'show_loader', 'hide_loader',
                         'change_graph_style_to_point', 'change_graph_style_to_bar', 'reset_results_from_fit_and_hide_texts', 'initialize_fit_results_texts',
                         'show_consumption_fit_dials', 'hide_consumption_fit_dials', 'wipe_interface_clean', 'hide_weekly_dials_show_daily_dials',
                         'hide_daily_dials_show_weekly_dials']
@@ -72,9 +72,15 @@ export function global_information_window_update_attributes(globalWindow,icon_ur
  * @return {void}
  *
  */
-export function global_information_window_log_in_success(globalWindow){
+export function global_information_window_log_in_success_generic(globalWindow){
     global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_223d6f8e60f849b78ffafce108b4868f~mv2.png',
         '#7AC142', 'white', '2em', '2em', 'Willkommen zurück!', '3000', 'true')
+}
+
+export function global_information_window_log_in_success_victron(globalWindow){
+    global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_223d6f8e60f849b78ffafce108b4868f~mv2.png',
+        '#7AC142', 'white', '2em', '2em', 'Willkommen zurück! Während Sie arbeiten, verfeinern wir den Terminkalender, ' +
+        ' um nur Tage mit zuverlässigen Daten anzuzeigen.', '7000', 'true')
 }
 
 /**

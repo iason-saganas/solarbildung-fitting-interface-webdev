@@ -1,9 +1,9 @@
 import {
     checkmark,
-    global_information_window_log_in_success,
+    global_information_window_log_in_success_generic,
     global_information_window_log_in_failure,
     hide_loader,
-    crossmark
+    crossmark, global_information_window_log_in_success_victron
 } from "../graphs-element-manipulation-functions";
 
 import {
@@ -70,7 +70,7 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
         else {
             // handle success: "Site was found."
             checkmark(checkmarkInstance)
-            global_information_window_log_in_success(globalInformationWindow)
+            global_information_window_log_in_success_victron(globalInformationWindow)
 
             // name of the school
             nameOfSchoolText.text = data[0].installationName.split(",")[0]+", "+ data[0].installationName.split(",")[1]
@@ -106,14 +106,71 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
                     })
                 }
                 dailyDatePicker.enabledDateRanges =  enabledDates
-                // set standard value for the day as the last day at which data was found
+                // set standard value for the day as the last day at which data was found,
                 const lastIndex = enabledDates.length-1
                 dailyDatePicker.value =  enabledDates[lastIndex]["startDate"]
+
+                dailyChartJSInstance.postMessage(["Clear any existing fits.", []])
+
+                // Fine tune the date ranges using an async function, synchronously return 'success' and let the function fine tune the date range 'in the background'
+                fineTuneEnabledDateRanges_VictronSolution_Daily(dailyDatePicker, enabledDates, siteID)
+
                 return 'success'
             })
 
         }
     })
+}
+
+/**
+ * Adjusts the enabled dates for another installation than the default one upon its selection instead of calling
+ * all of 'InitializeWorkspace_VictronSolution_Daily()' again.
+ *
+ * @param {string}  newSiteIDValue              The site ID of the freshly picked installation, in string representation.
+ * @param {string}  oldSiteIDValue              The string representation of the site ID of the installation selected prior to the new selection. A copy of its enabled ranges is made and stored!
+ * @param {Element} dailyDatePicker             The daily date picker grabbed as $w('DailyDatePicker').
+ * @param {Element} dailyChartJSInstance       : Something like $w("#ChartJsDaily")
+ *
+ * */
+export function adjustDatesForOtherInstallations_VictronSolution_Daily(newSiteIDValue, oldSiteIDValue, dailyDatePicker,dailyChartJSInstance){
+    // While the 'minDate' and 'maxDate' attributes of the 'dailyDatePicker' element say the same, the enabled and disabled dates need to be updated!
+    // Here, we make copies of the enabled and disabled ranges of the installation associated with the 'oldSiteIDValue' which will be returned and
+    // stored as `enabledDateRanges_ID_${oldSiteIDValue}` and `disabledDateRanges_ID_${oldSiteIDValue}` keys to the main.js file global variable
+    // 'globalInstallationInformationObject'.
+
+    const copyOfOldEnabledDateRanges = dailyDatePicker.enabledDateRanges
+    const copyOfOldDisabledDateRanges = dailyDatePicker.disabledDateRanges
+
+    // clear ranges
+
+    dailyDatePicker.enabledDateRanges = null
+    dailyDatePicker.disabledDateRanges = []
+
+    const creationInstallationDate = dailyDatePicker.minDate // because already set by the first run of 'InitializeWorkspace_VictronSolution_Daily()' and is the same for all installations
+    const creationUnixTimestamp = Math.floor(creationInstallationDate.getTime()/1000)
+    const startEndArray = constructStartEndArray_VictronSolution(creationUnixTimestamp)
+
+    return getAllEnabledDates_VictronSolution(newSiteIDValue, startEndArray).then(results => {
+        let enabledDates = []
+        for (const enabledDateUnixTimestamp of results){
+            const enabledDateDatetimeObject = new Date(enabledDateUnixTimestamp * 1000)
+            enabledDates.push({
+                startDate: enabledDateDatetimeObject,
+                endDate: enabledDateDatetimeObject
+            })
+        }
+        dailyDatePicker.enabledDateRanges =  enabledDates
+        // Don't change the picked date value in case the user wants to compare with the other installation.
+
+
+        dailyChartJSInstance.postMessage(["Clear any existing fits.", []])
+
+        // Fine tune the date ranges using an async function, synchronously return 'success' and let the function fine tune the date range 'in the background'
+        fineTuneEnabledDateRanges_VictronSolution_Daily(dailyDatePicker, enabledDates, newSiteIDValue)
+
+        return ['success', copyOfOldEnabledDateRanges, copyOfOldDisabledDateRanges]
+    })
+
 }
 
 
@@ -208,7 +265,6 @@ function constructStartEndArray_VictronSolution(unixTimestampCreationInstallatio
 export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID, chartJsInstance, CsvDownloadButtonElement){
     console.log("Date that is passed to 'victron.js/findAndProcessData_VictronSolution_Daily()' function: ",  datePickerValue)
     return returnTimeAndPowerArrays_VictronSolution_Daily(false,SiteID, datePickerValue).then(result => {
-        console.log("I FOOOUND : ", result)
         const [XArray, YArray, ZArray, dictOfXYZ] = result
         postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
         createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
@@ -217,6 +273,44 @@ export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID,
     })
 }
 
-export function fineTuneEnabledDateRanges_VictronSolution_Daily(){
+/**
+ * Gets the current victron enabled date ranges in the daily date picker and sifts through them one by one through calling
+ * 'returnTimeAndPowerArrays_VictronSolution_Daily' to check for days for which:
+ *
+ * 1.)  The eigenconsumption of the data logger is equal to the by the PV plant produced power, leading to a continuous band of values
+ *      alternating between e.g. 0 and -5. The function 'returnTimeAndPowerArrays_VictronSolution_Daily' subtracts this noise from the data,
+ *      so here, the criterium is whether the max of the power array is smaller or equal, say e.g. 7.
+ * 2.)  The length of the time array is not equal or smaller than 288. 288 is the number of data points that should have been registered
+ *      in 24 hours, if the power is sampled every 5 minutes. The time array is smaller than 288, when the logger wasn't working the day before,
+ *      and suddenly starts working and collecting date at e.g. noon of the day after.
+ *
+ * It then disables those dates.
+ *
+ * @param  {Element}    datePicker                : The daily date picker, grabbed as $w('#DailyDatePicker')
+ * @param  {object}     enabledDateRanges         : The dictionary object corresponding to $w('#DailyDatePicker').enabledDates
+ * @param  {string}     SiteID                    : The Victron's Site ID. Passed as e.g. '$w("#radioGroupInstallations").value'
+ *
+ * @return {void}
+ *
+ */
+export function fineTuneEnabledDateRanges_VictronSolution_Daily(datePicker, enabledDateRanges, SiteID){
+
+    let disabledDateRange = []
+    for (const enabledDate of  enabledDateRanges){
+        const date = enabledDate['startDate']
+        returnTimeAndPowerArrays_VictronSolution_Daily(false, SiteID, date).then(result => {
+            const [XArray, YArray, ZArray, dictOfXYZ] = result
+            const lengthOfPowerData = XArray.length
+            const maxRegisteredPowerValue = Math.max(...YArray[0])
+            if (lengthOfPowerData < 278 || maxRegisteredPowerValue < 30) {
+                disabledDateRange.push({
+                    startDate: date,
+                    endDate: date
+                }) // to disable one date, wix velo needs to have it passed two times (startDate, endDate arguments)
+                }
+            datePicker.disabledDateRanges = disabledDateRange // Update => Disable dates one by one (inside the outer for loop)
+        })
+    }
+
 
 }

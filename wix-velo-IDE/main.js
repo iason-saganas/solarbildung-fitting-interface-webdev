@@ -72,7 +72,7 @@ import {
 } from 'public/graphs-custom-helper-functions.js'
 
 import {
-    global_information_window_log_in_success,
+    global_information_window_log_in_success_generic,
     global_information_window_log_in_failure,
     checkmark,
     crossmark,
@@ -95,6 +95,7 @@ import {
 } from "public/data-solutions/demo";
 
 import {
+    adjustDatesForOtherInstallations_VictronSolution_Daily,
     findAndProcessData_VictronSolution_Daily,
     InitializeWorkspace_VictronSolution_Daily
 } from "public/data-solutions/victron";
@@ -127,19 +128,37 @@ import {
 
  D E F I N I T I O N   O F   G L O B A L   V A R I A B L E S
 
- This is the information that gets pushed into the pages html interface. For example:
+ This is the information that gets pushed into the pages html interface, for example:
  Upon choosing a date (globalYArray, globalXArray) or upon executing a fit (globalGenerationOptimalParametersArray).
+
+ Descriptions:
+
+ -  globalXArray:                                   Timestamp array. looks like [ 1212415315, 12124153113, 1212415316, ... ]
+ -  globalYArray:                                   Generation array. looks like [ [ 1, 2, 3, 4, ... ] ]
+ -  globalZArray:                                   Consumption array. looks like [ [ 1, 2, 3, 4, ... ] ]
+ -  globalGenerationOptimalParametersArray:         Generation parameters array
+ -  globalConsumptionOptimalParametersArray:        Consumption parameters array
+ -  globalCalendarMode:                             One of 'daily', 'weekly'. Determines whether daily data or weekly aggregates are shown.
+ Is updated via the 'CalendarModeTool' element.
+ -  globalCustomerSolution:                         Stores the current in-use customer solution in a global variable.
+ -  globalInstallationInformationObject:            This is a dictionary that contains information about different installations of a site. The
+                                                    information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
+                                                    stored here after first retrieval. Keys:
+                                                    -   'idOfCurrentlySelectedInstallation'
+
+
  */
 
-var globalXArray = []                // timestamp array. looks like [ 1212415315, 12124153113, 1212415316, ... ]
-var globalYArray = []                // generation array. looks like [ [ 1, 2, 3, 4, ... ] ]
-var globalZArray = []               // consumption array. looks like [ [ 1, 2, 3, 4, ... ] ]
-var globalGenerationOptimalParametersArray = []          // generation parameters array
-var globalConsumptionOptimalParametersArray = []  // consumption parameters array
-var useDemoData = false               // inputted ID is equal to the demo ID => true, else false
-var existsNonTrivialZData = false   // did the data solution (VRM API / demo data) return consumption data? If no, show 'inject generic consumption data?' option
-var calendarMode = 'daily'             // One of 'daily', 'weekly'. Determines whether daily data or weekly aggregates are shown. Is updated via the 'CalendarModeTool' element.
-var customerSolution = 'Victron'
+var globalXArray = []
+var globalYArray = []
+var globalZArray = []
+var globalGenerationOptimalParametersArray = []
+var globalConsumptionOptimalParametersArray = []
+var existsNonTrivialZData = false
+var globalCalendarMode = 'daily'
+var globalCustomerSolution = 'Victron'
+var globalInstallationInformationObject = {}
+
 
 
 /**
@@ -184,14 +203,14 @@ var customerSolution = 'Victron'
  * @return  {void}
  */
 function pushGraphDataToPlotter(chartJsElement, dataDictionary){
-        if (customerSolution !== 'Demo'){
-            // dict contains x and y values
-            chartJsElement.postMessage(["Time and generation data, non-demo.",dataDictionary])
-        }
-        else if (customerSolution === 'Demo'){
-            // dict contains x, y and z values
-            chartJsElement.postMessage(["Time, generation and consumption data, demo.",dataDictionary])
-        }
+    if (globalCustomerSolution !== 'Demo'){
+        // dict contains x and y values
+        chartJsElement.postMessage(["Time and generation data, non-demo.",dataDictionary])
+    }
+    else if (globalCustomerSolution === 'Demo'){
+        // dict contains x, y and z values
+        chartJsElement.postMessage(["Time, generation and consumption data, demo.",dataDictionary])
+    }
 }
 
 
@@ -214,20 +233,19 @@ function returnPowerData(debug, date, SiteID){
     // Solving a bug by setting hours of datetime object from '00:00:000' to noon. Otherwise, somewhere in the chain of the function calls in the backend a millisecond is subtracted,
     // giving us the data of the day before the actual date.
     date.setHours(12, 0, 0 , 0)
-    console.log("----> Inputting date: ", date)
 
     const dataSolutions = [()=>{
         return findAndProcessData_DemoSolution_Daily(date, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
+    },
+        () => {
+            return findAndProcessData_VictronSolution_Daily(date, SiteID, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
         },
         () => {
-         return findAndProcessData_VictronSolution_Daily(date, SiteID, $w("#ChartJsDaily"), $w("#DownloadCSVhtml"))
-        },
-        () => {
-         // pass, UKMongoDB data solution
+            // pass, UKMongoDB data solution
         }]
 
     const solutionNames = ['Demo', 'Victron', 'UKMongoDB']
-    const indexOfFunctionToExecute = solutionNames.indexOf(customerSolution) // global function
+    const indexOfFunctionToExecute = solutionNames.indexOf(globalCustomerSolution) // global variable
 
     // execute customer-specific data solution function
     return dataSolutions[indexOfFunctionToExecute]()
@@ -317,12 +335,12 @@ $w.onReady(function () {
     $w('#CalendarModeTool').on('DropdownChoice', (data) => {
         const index_of_selected_choice = data.detail
         if (index_of_selected_choice == 0){
-            calendarMode = 'daily'
+            globalCalendarMode = 'daily'
             hide_weekly_dials_show_daily_dials($w("#ColumnStripGenerationWeekly"),$w("#ColumnStripConsumptionWeekly"),$w("#ColumnStripGenerationDaily"),$w("#ColumnStripConsumptionDaily"))
             // function that needs to be implemented :update_calendar_based_on_mode(calendarMode)
         }
         else if (index_of_selected_choice == 1){
-            calendarMode = 'weekly'
+            globalCalendarMode = 'weekly'
             hide_daily_dials_show_weekly_dials($w("#ColumnStripGenerationWeekly"),$w("#ColumnStripConsumptionWeekly"),$w("#ColumnStripGenerationDaily"),$w("#ColumnStripConsumptionDaily"))
             // update_calendar_based_on_mode(calendarMode)
         }
@@ -589,10 +607,10 @@ export function FunctionChoiceDropDown_change(event) {
  * and some stylistic manipulations.
  * */
 function findAndFillWithData_Daily(){
-    $w('Loader2Daily').show()
+    $w('#Loader2Daily').show()
     const currentlySelectedDate = $w('#DailyDatePicker').value
     returnPowerData(false, currentlySelectedDate, $w("#radioGroupInstallations").value).then(dataDictionary => {
-        $w('Loader2Daily').hide()
+        $w('#Loader2Daily').hide()
         pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
         $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
     })
@@ -601,10 +619,47 @@ function findAndFillWithData_Daily(){
 
 export function DailyDatePicker_change(event) {
     findAndFillWithData_Daily()
+    // if there are multiple installations => Check whether returnPowerData of all Site ID's is good data and then enable the sum options on the radio buttons.
 }
 
 export function radioGroupInstallations_change(event) {
-    findAndFillWithData_Daily()
+    const selectedInstallationIDString = $w('#radioGroupInstallations').value
+    if (selectedInstallationIDString === '000000'){
+        // identifier for sum of all installations => Handle
+    }
+    else{
+        const newID = selectedInstallationIDString
+        const oldID = globalInstallationInformationObject['idOfCurrentlySelectedInstallation']
+
+        const storedEnabledDates = globalInstallationInformationObject[`enabledDateRanges_ID_${newID}`]
+        const storedDisabledDates = globalInstallationInformationObject[`disabledDateRanges_ID_${newID}`]
+
+        // First, look whether the variable 'globalInstallationInformationObject' has some information stored about the selected ID
+        if ( storedEnabledDates && storedDisabledDates){
+            // data exists! Update date ranges by clearing all and then using stored data
+
+            $w('#DailyDatePicker').disabledDateRanges = []
+            $w('#DailyDatePicker').enabledDateRanges = null
+
+            $w('#DailyDatePicker').enabledDateRanges = storedEnabledDates
+            $w('#DailyDatePicker').disabledDateRanges = storedDisabledDates
+
+            findAndFillWithData_Daily()
+        }
+
+        else {
+            // Installation was never selected, thus never data gathered => Update the date ranges via http calls.
+            // Up to now, only the Victron Solution calls for multiple installations per site.
+            adjustDatesForOtherInstallations_VictronSolution_Daily(newID, oldID, $w('#DailyDatePicker'), $w('#ChartJsDaily')).then(results => {
+                const [success, copyOfOldEnabledDateRanges, copyOfOldDisabledDateRanges] = results
+                globalInstallationInformationObject['idOfCurrentlySelectedInstallation'] = newID
+                globalInstallationInformationObject[`enabledDateRanges_ID_${oldID}`] = copyOfOldEnabledDateRanges
+                globalInstallationInformationObject[`disabledDateRanges_ID_${oldID}`] = copyOfOldDisabledDateRanges
+                findAndFillWithData_Daily()
+            })
+        }
+
+    }
 }
 
 export function OverviewOptionButton_click(event) {
@@ -631,17 +686,22 @@ export function OverviewOptionButton_click(event) {
 export function InitializeWorkspaceWithIdButton_click(event) {
 
     show_loader($w('#Loader1'))
+    $w('#DailyDatePicker').maxDate = undefined
+    $w('#DailyDatePicker').minDate = undefined
+    $w('#DailyDatePicker').enabledDateRanges = null
+    $w('#DailyDatePicker').disabledDateRanges = []
     const id = $w("#InputID").value // string
     // update global 'customerSolution' function
-    customerSolution  = findWhichCustomerSolution(+id)
+    globalCustomerSolution  = findWhichCustomerSolution(+id)
 
     const workspaceSolutions = [
         () => Promise.resolve(InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#Loader1'), $w('#CheckmarkHTML1'))),
         () => InitializeWorkspace_VictronSolution_Daily(id, $w('#Loader1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily")),
         //() => InitializeWorkspace_UKMongoDBSolution_Daily('Implement Parameters here')
     ]
+
     const solutionNames = ['Demo', 'Victron', 'UKMongoDB']
-    const indexOfFunctionToExecute = solutionNames.indexOf(customerSolution)
+    const indexOfFunctionToExecute = solutionNames.indexOf(globalCustomerSolution)
 
     // execute customer-specific initialization function
     // if the return type of the selected function is a promise, that call to grab the value of the datepicker and push the graph data of that day to the plotter
@@ -653,6 +713,8 @@ export function InitializeWorkspaceWithIdButton_click(event) {
         if (result !=='failure' ){
             // for the default date, find the data and push it to chart.JS plotter
             findAndFillWithData_Daily()
+            // Update the key on this object, so on installation change, we know what the old selected ID was
+            globalInstallationInformationObject['idOfCurrentlySelectedInstallation'] =  $w('#radioGroupInstallations').value
         }
     })
 
