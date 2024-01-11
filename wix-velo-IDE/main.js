@@ -86,7 +86,7 @@ import {
     hide_consumption_fit_dials,
     wipe_interface_clean,
     hide_weekly_dials_show_daily_dials,
-    hide_daily_dials_show_weekly_dials
+    hide_daily_dials_show_weekly_dials, global_information_window_new_installation_chosen
 } from 'public/graphs-element-manipulation-functions.js'
 
 import {
@@ -142,9 +142,9 @@ import {
  Is updated via the 'CalendarModeTool' element.
  -  globalCustomerSolution:                         Stores the current in-use customer solution in a global variable.
  -  globalInstallationInformationObject:            This is a dictionary that contains information about different installations of a site. The
-                                                    information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
-                                                    stored here after first retrieval. Keys:
-                                                    -   'idOfCurrentlySelectedInstallation'
+ information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
+ stored here after first retrieval. Keys:
+ -   'idOfCurrentlySelectedInstallation'
 
 
  */
@@ -250,53 +250,53 @@ function returnPowerData(debug, date, SiteID){
     // execute customer-specific data solution function
     return dataSolutions[indexOfFunctionToExecute]()
 
-    /*
+}
 
-    if (!is_demo && currentCustomerSolution === 'Victron'){
-        let YesterdayTimeStamp = date.getTime() - 86400000;
-        let yesterDate = new Date(YesterdayTimeStamp);
-        const installation_id = $w("#radioGroupInstallations").value
-        // date format should be month day year for timestamp() function date.setDate(date.getDate() - 1)
-        const correctedDateCurrent = (date.getMonth()+1).toString() + "/" + date.getDate().toString() + "/" + date.getFullYear().toString() + " " + "23:59:59"
-        const correctedDateDayBefore = (yesterDate.getMonth()+1).toString() + "/" + yesterDate.getDate().toString() + "/" + yesterDate.getFullYear().toString() + " " + "23:59:59"
-
-
-
-        return returnTimeAndPowerArrays_VictronSolution_Daily(debug,installation_id,convert_string_to_unix_timestamp(correctedDateDayBefore),convert_string_to_unix_timestamp(correctedDateCurrent)).then(DictOfXandYvalues=>{
-
-            const lengthOfPowerData = Object.keys(DictOfXandYvalues).length
-
-
-            if (lengthOfPowerData<50 || DictOfXandYvalues=="NoData" || Math.max(...Object.values(DictOfXandYvalues))<7){
-                //$w("#errorGroup").show()
-                //$w("#HTTPupdateBox").hide()
-                //console.log("The returned data list is empty or too small. It is set manually to []")
-                return []
-            }
-            else {
-                //$w("#htmlLoadingCircle").postMessage(["click toggle button"])
-                //setTimeout(()=>{ $w("#HTTPupdateBox").hide() },1000);
-                //setTimeout(()=>{ $w("#htmlLoadingCircle").postMessage(["untoggle"]) },1200);
-                globalXArray.length = 0
-                globalYArray.length = 0
-                for (const key of Object.keys(DictOfXandYvalues)){globalXArray.push(+key)}
-                globalYArray.push(Object.values(DictOfXandYvalues))
-                $w("#ChartJsDaily").postMessage(["UniversalXarrayUpdate",globalXArray.map(el=>convert_time_string_to_int(format_time(el)))])
-                var csv = "Zeitstempel;"+"Leistung in Watt"+"\n"
-                const XandYzip = zip([globalXArray.map(x=>'='+'"'+format_time_short(x).toString()+'"'),globalYArray[0]])
+/**
+ * Combines the data gathering function 'returnPowerData(datepicker.value)' with the function pushing the data to the plotter
+ * and some stylistic manipulations.
+ * */
+function findAndFillWithData_Daily(){
+    $w('#Loader2Daily').show()
+    const currentlySelectedDate = $w('#DailyDatePicker').value
+    returnPowerData(false, currentlySelectedDate, $w("#radioGroupInstallations").value).then(dataDictionary => {
+        $w('#Loader2Daily').hide()
+        pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
+        $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+    })
+    reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
+}
 
 
-                for (const i of XandYzip){
-                    csv += i.join(';')
-                    csv += "\n"
-                }
-                var csvFile = new Blob([csv], {type: "text/csv"});
-                $w("#DownloadCSVhtml").postMessage(["Store csv blob",csvFile])
-                return DictOfXandYvalues
+function findAndFillWithSumOfAllData_Daily(){
+    $w('#Loader2Daily').show()
+    const date = $w('#DailyDatePicker').value
+    const radioOptions = $w('#radioGroupInstallations').options
+    radioOptions.pop() // Removing last element since it corresponds to the sum of installation choice, which is a toy ID (000000)
+    const numberOfRadioOptions = radioOptions.length
+    console.log("numberOfRadioOptions ", numberOfRadioOptions , "radioOptions ", radioOptions)
+    let arrayOfDicts = []
+    for (const choice of radioOptions){
+        returnPowerData(false, date, choice.value).then(dataDictionary => {
+            arrayOfDicts.push(dataDictionary)
+            // if the length of sumArray is equal to the 'numberOfRadioOptions', then all promises must have resolved.
+            if (arrayOfDicts.length === numberOfRadioOptions){
+                const sumOfDataDictionary = {}
+                arrayOfDicts.forEach(dict => {
+                    for (let key in dict){
+                        if (dict.hasOwnProperty(key)){
+                            sumOfDataDictionary[key] = (sumOfDataDictionary[key] || 0) + dict[key]
+                        }
+                    }
+                })
+
+                pushGraphDataToPlotter($w("#ChartJsDaily"), sumOfDataDictionary)
+                reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
+                $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+                $w('#Loader2Daily').hide()
             }
         })
-    }  */
-
+    }
 }
 
 function update_calendar_based_on_mode(){
@@ -602,20 +602,6 @@ export function FunctionChoiceDropDown_change(event) {
     }
 }
 
-/**
- * Combines the data gathering function 'returnPowerData(datepicker.value)' with the function pushing the data to the plotter
- * and some stylistic manipulations.
- * */
-function findAndFillWithData_Daily(){
-    $w('#Loader2Daily').show()
-    const currentlySelectedDate = $w('#DailyDatePicker').value
-    returnPowerData(false, currentlySelectedDate, $w("#radioGroupInstallations").value).then(dataDictionary => {
-        $w('#Loader2Daily').hide()
-        pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
-        $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
-    })
-    reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
-}
 
 export function DailyDatePicker_change(event) {
     findAndFillWithData_Daily()
@@ -626,6 +612,7 @@ export function radioGroupInstallations_change(event) {
     const selectedInstallationIDString = $w('#radioGroupInstallations').value
     if (selectedInstallationIDString === '000000'){
         // identifier for sum of all installations => Handle
+        findAndFillWithSumOfAllData_Daily()
     }
     else{
         const newID = selectedInstallationIDString
@@ -636,7 +623,11 @@ export function radioGroupInstallations_change(event) {
 
         // First, look whether the variable 'globalInstallationInformationObject' has some information stored about the selected ID
         if ( storedEnabledDates && storedDisabledDates){
-            // data exists! Update date ranges by clearing all and then using stored data
+            // data exists! Store old ID information and update date ranges by clearing all and then using stored data.
+
+            globalInstallationInformationObject[`enabledDateRanges_ID_${oldID}`] = $w('#DailyDatePicker').enabledDateRanges
+            globalInstallationInformationObject[`disabledDateRanges_ID_${oldID}`] = $w('#DailyDatePicker').disabledDateRanges
+
 
             $w('#DailyDatePicker').disabledDateRanges = []
             $w('#DailyDatePicker').enabledDateRanges = null
@@ -648,6 +639,7 @@ export function radioGroupInstallations_change(event) {
         }
 
         else {
+            global_information_window_new_installation_chosen($w('#GlobalInformationWindow'))
             // Installation was never selected, thus never data gathered => Update the date ranges via http calls.
             // Up to now, only the Victron Solution calls for multiple installations per site.
             adjustDatesForOtherInstallations_VictronSolution_Daily(newID, oldID, $w('#DailyDatePicker'), $w('#ChartJsDaily')).then(results => {

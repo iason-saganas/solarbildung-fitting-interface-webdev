@@ -263,13 +263,13 @@ function constructStartEndArray_VictronSolution(unixTimestampCreationInstallatio
  *
  */
 export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID, chartJsInstance, CsvDownloadButtonElement){
-    console.log("Date that is passed to 'victron.js/findAndProcessData_VictronSolution_Daily()' function: ",  datePickerValue)
     return returnTimeAndPowerArrays_VictronSolution_Daily(false,SiteID, datePickerValue).then(result => {
+        if (result !== undefined){
         const [XArray, YArray, ZArray, dictOfXYZ] = result
         postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
         createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
         return dictOfXYZ
-
+        }
     })
 }
 
@@ -299,15 +299,24 @@ export function fineTuneEnabledDateRanges_VictronSolution_Daily(datePicker, enab
     for (const enabledDate of  enabledDateRanges){
         const date = enabledDate['startDate']
         returnTimeAndPowerArrays_VictronSolution_Daily(false, SiteID, date).then(result => {
-            const [XArray, YArray, ZArray, dictOfXYZ] = result
-            const lengthOfPowerData = XArray.length
-            const maxRegisteredPowerValue = Math.max(...YArray[0])
-            if (lengthOfPowerData < 278 || maxRegisteredPowerValue < 30) {
+            if (result === undefined){
                 disabledDateRange.push({
                     startDate: date,
                     endDate: date
                 }) // to disable one date, wix velo needs to have it passed two times (startDate, endDate arguments)
+            }
+            else{
+                // data exists and is iterable
+                const [XArray, YArray, ZArray, dictOfXYZ] = result
+                const lengthOfPowerData = XArray.length
+                const maxRegisteredPowerValue = Math.max(...YArray[0])
+                if (lengthOfPowerData < 278 || maxRegisteredPowerValue < 30) {
+                    disabledDateRange.push({
+                        startDate: date,
+                        endDate: date
+                    }) // to disable one date, wix velo needs to have it passed two times (startDate, endDate arguments)
                 }
+            }
             datePicker.disabledDateRanges = disabledDateRange // Update => Disable dates one by one (inside the outer for loop)
         })
     }

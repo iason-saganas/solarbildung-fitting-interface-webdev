@@ -304,7 +304,7 @@ export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, Site
                 console.log("From function 'fetchPowerAndTimeDataForDay_VictronSolution': Finished. No data exists.")
                 }
                 // no data registered.
-                return null
+                return [ [0], [[0]], [[0]] ]
             }
 
 

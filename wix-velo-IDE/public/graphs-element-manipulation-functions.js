@@ -1,3 +1,5 @@
+import {returnPowerData} from "../backend/custom-media-backend";
+import {returnTimeAndPowerArrays_VictronSolution_Daily} from "../backend/custom-http";
 
 const ALL_STYLISTIC = ['hide_element', 'global_information_window_update_attributes', 'global_information_window_log_in_success_generic',
                         'global_information_window_log_in_success_victron','global_information_window_log_in_failure', 'checkmark', 'crossmark', 'show_loader', 'hide_loader',
@@ -81,6 +83,12 @@ export function global_information_window_log_in_success_victron(globalWindow){
     global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_223d6f8e60f849b78ffafce108b4868f~mv2.png',
         '#7AC142', 'white', '2em', '2em', 'Willkommen zurück! Während Sie arbeiten, verfeinern wir den Terminkalender, ' +
         ' um nur Tage mit zuverlässigen Daten anzuzeigen.', '7000', 'true')
+}
+
+export function global_information_window_new_installation_chosen(globalWindow){
+    global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_80876ac53eb64b348957dd0a6299d183~mv2.png',
+        '#589BFF', 'white', '2em', '2em', 'Sie haben eine andere Installation ausgewählt. Wir suchen und merken uns Tage' +
+        ' mit relevanten Daten im Terminkalender.', '7000', 'true')
 }
 
 /**
@@ -338,3 +346,4 @@ export function add_standard_consumption_profile(){
 export function remove_standard_consumption_profile(){
     $w("#ChartJsDaily").postMessage(["RemoveStandartConsumptionProfile!"])
 }
+
