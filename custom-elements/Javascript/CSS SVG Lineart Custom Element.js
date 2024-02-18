@@ -1,7 +1,7 @@
 const STYLE = `
 svg{
-    width: 50vw;
-    height: 50vh;
+    width: 100%;
+    height: 100%;
   }
 
   path {
@@ -186,7 +186,7 @@ function startAnimation(){
             html_svg_path_element.classList.add('Latex')
         }
         else {
-            // console.log("No color match found, color : ", color_id, " of type", typeof(color_id))
+            //console.log("No color match found, color : ", color_id, " of type", typeof(color_id))
         }
 
     })
@@ -195,15 +195,18 @@ function startAnimation(){
 
 class CustomSVGElement extends HTMLElement {
     connectedCallback() {
-        const style = document.createElement('style')
-        style.innerHTML = STYLE
-        this.append(style)
+        setTimeout(()=>{
+            const style = document.createElement('style')
+            style.innerHTML = STYLE
+            this.append(style)
 
-        const svg_wrapper = document.createElement('div')
-        svg_wrapper.innerHTML = SVG
-        this.append(svg_wrapper)
+            const svg_wrapper = document.createElement('div')
+            svg_wrapper.innerHTML = SVG
+            this.append(svg_wrapper)
 
-        startAnimation()
+            startAnimation()
+        }, 1000)
+
     }
 
 }

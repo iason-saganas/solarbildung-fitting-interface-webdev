@@ -1,5 +1,16 @@
 /*
 *
+* ----------------------------------------------------------
+* F I T T I N G    I N T E R F A C E    V E R S I O N    2.0
+* ----------------------------------------------------------
+*
+* @ Creator:        Iason Saganas
+* @ Code support:   Felix B.
+* @ For:            Solar For Schools Bildung gGmbH
+* @ Thanks:         Everyone that gave constructive criticism and feedback
+*
+* ----------------------------------------------------------
+*
 * Workflow and structure of this code. The code is organized in six sections:
 *
 * 1. Imports
@@ -76,6 +87,7 @@ import {
     global_information_window_log_in_failure,
     checkmark,
     crossmark,
+    downloadCSV,
     show_loader,
     hide_loader,
     change_graph_style_to_bar,
@@ -110,8 +122,8 @@ import {
 
  N A M I N G   C O N V E N T I O N S
 
- -   Small helper functions from the file 'public/graphs-custom-helper-functions.js':       snake_case
- -   Stylistic function from the file 'public/graphs-element-manipulation-functions.js':    snake_case
+ -   Small helper functions from the file 'public/graphs-custom-helper-functions-by-felix.js':       snake_case
+ -   Stylistic function from the file 'public/graphs-element-manipulation-functions-by-felix.js':    snake_case
  -   File names and paths:                                                                  kebab-case
  -   Important backend functions (file path starts with 'backend/...'):                     camelCase
  -   Mutable global variables:                                                              camelCase
@@ -139,13 +151,14 @@ import {
  -  globalGenerationOptimalParametersArray:         Generation parameters array
  -  globalConsumptionOptimalParametersArray:        Consumption parameters array
  -  globalCalendarMode:                             One of 'daily', 'weekly'. Determines whether daily data or weekly aggregates are shown.
- Is updated via the 'CalendarModeTool' element.
+                                                    Is updated via the 'CalendarModeTool' element.
  -  globalCustomerSolution:                         Stores the current in-use customer solution in a global variable.
  -  globalInstallationInformationObject:            This is a dictionary that contains information about different installations of a site. The
- information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
- stored here after first retrieval. Keys:
- -   'idOfCurrentlySelectedInstallation'
-
+                                                    information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
+                                                    stored here after first retrieval. Keys of object:
+                                                    -   'idOfCurrentlySelectedInstallation'
+ -  isChromium                                      Whether or not the browser is chromium based. Information gotten from an in-page HTML element because of
+                                                    missing wix functionality.
 
  */
 
@@ -158,6 +171,7 @@ var existsNonTrivialZData = false
 var globalCalendarMode = 'daily'
 var globalCustomerSolution = 'Victron'
 var globalInstallationInformationObject = {}
+var isChromium = null // Boolean
 
 
 
@@ -205,7 +219,7 @@ var globalInstallationInformationObject = {}
 function pushGraphDataToPlotter(chartJsElement, dataDictionary){
     if (globalCustomerSolution !== 'Demo'){
         // dict contains x and y values
-        chartJsElement.postMessage(["Time and generation data, non-demo.",dataDictionary])
+        chartJsElement.postMessage(["Time, generation and possibly consumption data, non-demo.",dataDictionary])
     }
     else if (globalCustomerSolution === 'Demo'){
         // dict contains x, y and z values
@@ -257,47 +271,16 @@ function returnPowerData(debug, date, SiteID){
  * and some stylistic manipulations.
  * */
 function findAndFillWithData_Daily(){
-    $w('#Loader2Daily').show()
+    show_loader($w('#Loader2Daily'), isChromium)
     const currentlySelectedDate = $w('#DailyDatePicker').value
     returnPowerData(false, currentlySelectedDate, $w("#radioGroupInstallations").value).then(dataDictionary => {
-        $w('#Loader2Daily').hide()
+        hide_loader($w('#Loader2Daily'), isChromium)
         pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
         $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
     })
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
 }
 
-
-function findAndFillWithSumOfAllData_Daily(){
-    $w('#Loader2Daily').show()
-    const date = $w('#DailyDatePicker').value
-    const radioOptions = $w('#radioGroupInstallations').options
-    radioOptions.pop() // Removing last element since it corresponds to the sum of installation choice, which is a toy ID (000000)
-    const numberOfRadioOptions = radioOptions.length
-    console.log("numberOfRadioOptions ", numberOfRadioOptions , "radioOptions ", radioOptions)
-    let arrayOfDicts = []
-    for (const choice of radioOptions){
-        returnPowerData(false, date, choice.value).then(dataDictionary => {
-            arrayOfDicts.push(dataDictionary)
-            // if the length of sumArray is equal to the 'numberOfRadioOptions', then all promises must have resolved.
-            if (arrayOfDicts.length === numberOfRadioOptions){
-                const sumOfDataDictionary = {}
-                arrayOfDicts.forEach(dict => {
-                    for (let key in dict){
-                        if (dict.hasOwnProperty(key)){
-                            sumOfDataDictionary[key] = (sumOfDataDictionary[key] || 0) + dict[key]
-                        }
-                    }
-                })
-
-                pushGraphDataToPlotter($w("#ChartJsDaily"), sumOfDataDictionary)
-                reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
-                $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
-                $w('#Loader2Daily').hide()
-            }
-        })
-    }
-}
 
 function update_calendar_based_on_mode(){
     // pass
@@ -318,12 +301,43 @@ $w.onReady(function () {
 
     /*
 
+                            C O M M U N I C A T I O N   W I T H   P A G E   C U S T O M   H T M L   E L E M E N T S
+    */
+
+    $w('#ChartJsDaily').onMessage( event => {
+        const command = event.data[0]
+        const context = event.data[1]
+        if (command === "Update universal consumption array 'globalZArray'."){
+            // generated gaussian standard consumption curve
+            globalZArray.length = 0
+            globalZArray = [context]
+        }
+        console.log("GLOBAL Z ARRAY: ", globalZArray)
+    })
+
+
+    /*
+
+                            G E T T I N G   B R O W S E R   I N F O
+    */
+
+    $w("#getBrowserInfoHTML").postMessage("Get browser info.")
+    $w("#getBrowserInfoHTML").onMessage( (event) => {
+        let browser_info = event.data;
+        isChromium =  browser_info.isChromium;
+        hide_loader($w('#Loader2Daily'), isChromium)
+        hide_loader($w('#Loader1'), isChromium)
+    } );
+
+
+    /*
+
                             S T Y L I S T I C   M A N I P U L A T I O N S
     */
 
-    // since not default, hide the weekly and show the daily dials
+    // since not default, hide the weekly and show the daily dials and charts
     hide_weekly_dials_show_daily_dials($w("#ColumnStripGenerationWeekly"),$w("#ColumnStripConsumptionWeekly"),$w("#ColumnStripGenerationDaily"),$w("#ColumnStripConsumptionDaily"))
-
+    $w('#FittingInterfaceColumnStripChartJSWeekly').collapse()
     /*
 
                             H A N D L I N G   O F   C U S T O M   T O O L B A R   C H O I C E S
@@ -334,12 +348,12 @@ $w.onReady(function () {
 
     $w('#CalendarModeTool').on('DropdownChoice', (data) => {
         const index_of_selected_choice = data.detail
-        if (index_of_selected_choice == 0){
+        if (index_of_selected_choice === 0){
             globalCalendarMode = 'daily'
             hide_weekly_dials_show_daily_dials($w("#ColumnStripGenerationWeekly"),$w("#ColumnStripConsumptionWeekly"),$w("#ColumnStripGenerationDaily"),$w("#ColumnStripConsumptionDaily"))
             // function that needs to be implemented :update_calendar_based_on_mode(calendarMode)
         }
-        else if (index_of_selected_choice == 1){
+        else if (index_of_selected_choice === 1){
             globalCalendarMode = 'weekly'
             hide_daily_dials_show_weekly_dials($w("#ColumnStripGenerationWeekly"),$w("#ColumnStripConsumptionWeekly"),$w("#ColumnStripGenerationDaily"),$w("#ColumnStripConsumptionDaily"))
             // update_calendar_based_on_mode(calendarMode)
@@ -349,21 +363,21 @@ $w.onReady(function () {
 
     $w("#ExportDataTool").on('DropdownChoice', (data)=>{
         const index_of_selected_choice = data.detail
-        if (index_of_selected_choice == 0){
-            download_JPG()
+        if (index_of_selected_choice === 0){
+            downloadCSV($w("#NameDerSchule").text.split(",")[0], $w("#radioGroupInstallations"), $w("#DailyDatePicker").value)
         }
-        else if (index_of_selected_choice == 1){
-            download_CSV()
+        else if (index_of_selected_choice === 1){
+            $w("#ChartJsDaily").postMessage(['Download Png.', [isChromium]])
         }
     })
 
     $w("#ChangeGraphTypeTool").on('DropdownChoice', (data)=>{
         const index_of_selected_choice = data.detail
-        if (index_of_selected_choice == 0){
-            set_point_graph()
+        if (index_of_selected_choice === 0){
+            $w('#ChartJsDaily').postMessage(["Change graph to point style.", []])
         }
-        else if (index_of_selected_choice == 1){
-            set_bar_graph()
+        else if (index_of_selected_choice === 1){
+            $w('#ChartJsDaily').postMessage(["Change graph to bar style.",[]])
         }
     })
 
@@ -605,14 +619,12 @@ export function FunctionChoiceDropDown_change(event) {
 
 export function DailyDatePicker_change(event) {
     findAndFillWithData_Daily()
-    // if there are multiple installations => Check whether returnPowerData of all Site ID's is good data and then enable the sum options on the radio buttons.
 }
 
 export function radioGroupInstallations_change(event) {
     const selectedInstallationIDString = $w('#radioGroupInstallations').value
     if (selectedInstallationIDString === '000000'){
-        // identifier for sum of all installations => Handle
-        findAndFillWithSumOfAllData_Daily()
+        // unique identifier for sum of all installations. Not implemented in the current version of the fitting interface (Version 2.0)
     }
     else{
         const newID = selectedInstallationIDString
@@ -677,7 +689,7 @@ export function OverviewOptionButton_click(event) {
 
 export function InitializeWorkspaceWithIdButton_click(event) {
 
-    show_loader($w('#Loader1'))
+    show_loader($w('#Loader1'), isChromium)
     $w('#DailyDatePicker').maxDate = undefined
     $w('#DailyDatePicker').minDate = undefined
     $w('#DailyDatePicker').enabledDateRanges = null
@@ -687,8 +699,8 @@ export function InitializeWorkspaceWithIdButton_click(event) {
     globalCustomerSolution  = findWhichCustomerSolution(+id)
 
     const workspaceSolutions = [
-        () => Promise.resolve(InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#Loader1'), $w('#CheckmarkHTML1'))),
-        () => InitializeWorkspace_VictronSolution_Daily(id, $w('#Loader1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily")),
+        () => Promise.resolve(InitializeWorkspace_DemoSolution_Daily($w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), $w('#Loader1'), $w('#CheckmarkHTML1'), isChromium)),
+        () => InitializeWorkspace_VictronSolution_Daily(id, $w('#Loader1'), $w('#CrossmarkHTML1'), $w('#CheckmarkHTML1'), $w('#GlobalInformationWindow'), $w("#radioGroupInstallations"), $w("#DailyDatePicker"), $w("#NameDerSchule"), $w("#ChartJsDaily"), isChromium),
         //() => InitializeWorkspace_UKMongoDBSolution_Daily('Implement Parameters here')
     ]
 
@@ -717,25 +729,6 @@ export function InitializeWorkspaceWithIdButton_click(event) {
 
 
 
-export function xlsButton_click(event) {
-    const name = $w("#NameDerSchule").text.split(",")[0]
-    if (!useDemoData){
-        var installation = $w("#radioGroupInstallations").options[$w("#radioGroupInstallations").selectedIndex].label}
-    else if (useDemoData){
-        var installation = ""
-    }
-    const date = $w("#DailyDatePicker").value
-    const correctedDate = date.getDate().toString() + "/" + (date.getMonth()+1).toString() +  "/" + date.getFullYear().toString()
-
-    $w("#DownloadCSVhtml").postMessage(["Download CSV File",name+installation+ " " +correctedDate])
-}
-
-export function jpgButton_click(event) {
-    let userAgent = navigator.userAgent;
-    let browserIsChromiumBased = null
-    browserIsChromiumBased = !!userAgent.match(/chrome|chromium|crios/i);
-    $w("#ChartJsDaily").postMessage(['Download Png.', [browserIsChromiumBased]])
-}
 
 export async function copyGenPoptButton_click(event) {
     wixWindow.copyToClipboard(`${globalGenerationOptimalParametersArray}`)

@@ -114,13 +114,13 @@ export function createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadB
     let csv_columns_multilingual = ''
 
     if (language==="es"){
-        csv_columns_multilingual = "Registró temporal;"+"Generacíon de energía en vatios;"+"Consumo de energía en vatios"+"\n"
+        csv_columns_multilingual = "Registró temporal (Type: DateTime);"+"Generacíon de energía en vatios;"+"Consumo de energía en vatios"+"\n"
     }
     else if (language==="en"){
-        csv_columns_multilingual = "Timestamp;"+"Generation power in Watts;"+"Consumption power in Watts"+"\n"
+        csv_columns_multilingual = "Timestamp (Type: DateTime);"+"Generation power in Watts;"+"Consumption power in Watts"+"\n"
     }
     else if (language==="de"){
-        csv_columns_multilingual = "Zeitstempel;"+"Erzeugung in Watt;"+"Verbrauch in Watt"+"\n"
+        csv_columns_multilingual = "Zeitstempel (Type: DateTime);"+"Erzeugung in Watt;"+"Verbrauch in Watt"+"\n"
     }
 
     const zipOfYAndZ = zip([YArray[0], ZArray[0]])
@@ -128,12 +128,14 @@ export function createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadB
 
     for (const i of zipOfXYZForCsv){
         // fill the columns with data.
-        csv_columns_multilingual += i[0] + ";" + i[1][0] + ";" + i[1][1]
+        csv_columns_multilingual += i[0] + ";" + i[1][0].split(".")[0] + ";" + i[1][1].split(".")[0] // ; separates columns.
+        // .split(".")[0] removes all digits after the decimal point (so basically the equivalent of .toFixed(0) for numbers).
+        // that way, Excel cannot interpret '21.12' as the 21st of december, for example.
         csv_columns_multilingual += "\n"
     }
 
     let csvFile = new Blob([csv_columns_multilingual], {type: "text/csv"});
-    CsvDownloadButtonElement.postMessage(['Store csv blob', csvFile])
+    CsvDownloadButtonElement.postMessage(['Store csv blob.', [csvFile] ])
 }
 
 /**
@@ -170,14 +172,15 @@ export function findAndProcessData_DemoSolution_Daily(datePickerValue,chartJsIns
  * @param   {Element}   DailyChartJSInstance       : Something like $w("#ChartJsDaily").
  * @param   {Element}   Loader                     : Something like $w('#LoadingDots1').
  * @param   {Element}   Checkmark                  : Something like $w('#CheckmarkHTML1').
+ * @param   {Boolean}   isChromium                 : Whether the currently in-used browser is chromium-based or not.
  *
  * @return {string}
  *
  */
-export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, RadioGroupInstallations, DailyDatePicker, NameOfSchoolText, DailyChartJSInstance, Loader, Checkmark){
+export function InitializeWorkspace_DemoSolution_Daily(GlobalInformationWindow, RadioGroupInstallations, DailyDatePicker, NameOfSchoolText, DailyChartJSInstance, Loader, Checkmark,isChromium){
 
         global_information_window_log_in_success_generic(GlobalInformationWindow)
-        hide_loader(Loader)
+        hide_loader(Loader, isChromium)
         checkmark(Checkmark)
 
 

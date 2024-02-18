@@ -25,15 +25,18 @@ const reference_dict = {
     weekly_calendar_icon: 'https://static.wixstatic.com/media/fdb700_2bb5b56aba6142ccadd1a2621407f971~mv2.png',
     bar_graph_icon: 'https://static.wixstatic.com/media/fdb700_a83dd61d7f3046e7b15ddbecda36cb14~mv2.png',
     point_graph_icon: 'https://static.wixstatic.com/media/fdb700_edc74fb8bfb041968d708dc044a63cd8~mv2.png',
-    run_script_icon: 'https://static.wixstatic.com/media/fdb700_2fdd340c51014662a137f88e294641c5~mv2.png',
-    run_script_hover_icon: 'https://static.wixstatic.com/media/fdb700_9d0f437bbd73463293ef0ca8d2385eb1~mv2.png',
+    run_script_icon: 'https://static.wixstatic.com/media/fdb700_ced5f7a2984242a194fab32e0d1ad725~mv2.png',
+    run_script_hover_icon: 'https://static.wixstatic.com/media/fdb700_b0a6865e3ddb4bf9a0cb27c93ef316be~mv2.png',
+    run_script_deactivated_icon: 'https://static.wixstatic.com/media/fdb700_9e2d5db2c0774053970c0eadbcb83af3~mv2.png',
     copy_to_clipboard_icon_generation_parameters: 'https://static.wixstatic.com/media/fdb700_235af0a9a0ee446fa7c7df5cb10974da~mv2.png',
     copy_to_clipboard_icon_consumption_parameters: 'https://static.wixstatic.com/media/fdb700_f779d9b6391845b4a84990baeb1b2470~mv2.png',
+    copy_to_clipboard_deactivated_icon: 'https://static.wixstatic.com/media/fdb700_292590d627c048b7be455804d279af7d~mv2.png',
     copy_to_clipboard_icon_geogebra_code: 'https://static.wixstatic.com/media/fdb700_3453c0512e6649f4a980db036de03667~mv2.png',
     export_csv_data_icon: 'https://static.wixstatic.com/media/fdb700_9ca0922945ba4311a4cf131582f27971~mv2.png',
     export_png_data_icon: 'https://static.wixstatic.com/media/fdb700_63b00a7d67b9490a92f74e28d606d1e3~mv2.png',
-    clear_all_icon: 'https://static.wixstatic.com/media/fdb700_baa45e9c041a4d3cb8bf530cc59b322a~mv2.png',
-    clear_all_hover_icon: 'https://static.wixstatic.com/media/fdb700_4de62e157c184bbfbae8437374c3e72d~mv2.png',
+    clear_all_icon: 'https://static.wixstatic.com/media/fdb700_234beb62eceb46b8a37d9d0d839e05c6~mv2.png',
+    clear_all_hover_icon: 'https://static.wixstatic.com/media/fdb700_9a02bc67be7e4d5a8d59fb939378926c~mv2.png',
+    clear_all_deactivated_icon: 'https://static.wixstatic.com/media/fdb700_605407391a2041cfbbe6e554c1730e00~mv2.png',
 }
 
 /*
@@ -44,7 +47,10 @@ const reference_dict = {
             - 'urls_list'               {string}    A string consisting of two URLs: the first one the default image of the icon and the second one image to replace with on hover.
             - 'index_of_default_choice' {string}    A string representing the index of the default selected choice (e.g. '0' for the first choice).
             - 'tooltip_text'            {string}    The text that appears on hover of the tool, describing its functionality.
-            - 'custom_height'           {string}    A custom height to adjust the icon button to.
+            - 'custom_height'           {string}    (optional) A custom height to adjust the icon button to.
+            - 'deactivated'             {string}    A string representing a boolean value ('true' or 'false') that indicates whether the element is active or not.
+            - 'deactivated_media_url'   {string}    A string that contains the url of the media to be shown if deactivated==='true'.
+            - 'deactivated_tooltip_text' {string}   A string that describes what to do in order to activate the element.
 
             Exemplary attribute collection:
 
@@ -257,16 +263,29 @@ class IconButtonCustomComponent extends HTMLElement {
 
         const custom_height = this.getAttribute('custom_height')
 
+        const deactivated = this.getAttribute('deactivated')
+        const deactivated_media = this.getAttribute('deactivated_media_url')
+        const deactivated_tooltip_text = this.getAttribute('deactivated_tooltip_text')
+
 
         // give it the base_ID as ID. Used in the helper function to find the custom element since it
         // didn't work to give the 'this' keyword as an argument to those functions.
         this.id = base_ID
 
-        HTML_createOnlyImage(base_ID, list_of_urls[index_of_default_selected_element])
-        JS_IconButtonHover(hover_image,default_image,base_ID)
+        if (deactivated === 'true'){
+            HTML_createOnlyImage(base_ID, deactivated_media)
+        }
+        else{
+            HTML_createOnlyImage(base_ID, list_of_urls[index_of_default_selected_element])
+            JS_IconButtonHover(hover_image,default_image,base_ID)
+        }
         JS_IconButtonWixVeloCommunication(base_ID)
 
-        if (tooltip_text){
+        if (deactivated === 'true'){
+            HTML_createTooltipDOM(deactivated_tooltip_text, base_ID)
+            JS_addHoverTooltip(base_ID)
+        }
+        else if (tooltip_text){
             // if 'tooltip_text' is not null, create the tooltip DOM and add hover listener to image
             HTML_createTooltipDOM(tooltip_text, base_ID)
             JS_addHoverTooltip(base_ID)
@@ -275,6 +294,12 @@ class IconButtonCustomComponent extends HTMLElement {
         if (custom_height){
             JS_adjustImageToCustomHeight(custom_height, base_ID)
         }
-    }}
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        alert("change")
+    }
+
+}
 
 customElements.define('icon-button-custom-component', IconButtonCustomComponent);

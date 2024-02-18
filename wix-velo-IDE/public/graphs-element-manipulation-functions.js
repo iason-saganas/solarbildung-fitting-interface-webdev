@@ -134,26 +134,51 @@ export function crossmark(crossmarkInstance){
 
 /**
  * Shows a custom html loader. Instance is grabbed by $w(`#LoadingDots${int}`), where int is some number id-ing the custom html loader element.
+ * The loaders are hid and shown via manipulating their opacity, not their visibility property. Otherwise, bugs in the safari browser will occour!
+ * No bugs for Chromium-based browsers. The safari bug shows the loader properly, but once hidden and re-shown, the loading dot stays at the same place
+ * on the outer circle and starts jumping to various positions or does not move at all. Opacity manipulation is inside the loader HTMLs.
+ *
+ * Chromium-based browser bug appeared: Removing / adding class or setting opacity or setting visibility:hidden directly in the html element now also
+ * does not work in those browsers. Work around is to use the $w ui show/hide functionality.
  *
  * @param  {Element} loaderInstance      : The loader instance to show.
+ * @param {Boolean} isChromium           : Whether the current browser is chromium based or not. Is needed to fix a bug. Has to be passed as argument because wix has no functionality to retrieve it here.
  *
  * @return {void}
  *
  */
-export function show_loader(loaderInstance){
-    loaderInstance.show()
+export function show_loader(loaderInstance, isChromium){
+    if (isChromium){
+        // showing via wix $w functionality, chromium solution
+        loaderInstance.show()
+    }
+    else{
+        // showing via opacity setting, safari solution
+        loaderInstance.postMessage(["Show.", []])
+    }
 }
 
 /**
  * Hides a custom html loader. Instance is grabbed by $w(`#LoadingDots${int}`), where int is some number id-ing the custom html loader element.
  *
+ * Chromium-based browser bug appeared: Removing / adding class or setting opacity or setting visibility:hidden directly in the html element now also
+ * does not work in those browsers. Work around is to use the $w ui show/hide functionality.
+ *
  * @param  {Element} loaderInstance      : The loader instance to hide.
+ * @param {Boolean} isChromium           : Whether the current browser is chromium based or not. Is needed to fix a bug. Has to be passed as argument because wix has no functionality to retrieve it here.
  *
  * @return {void}
  *
  */
-export function hide_loader(loaderInstance){
-    loaderInstance.hide()
+export function hide_loader(loaderInstance, isChromium){
+    if (isChromium){
+        // hiding via wix $w functionality, chromium solution
+        loaderInstance.hide()
+    }
+    else {
+        // hiding via opacity setting, safari solution
+        loaderInstance.postMessage(["Hide.", []])
+    }
 }
 
 
@@ -328,22 +353,16 @@ export function hide_daily_dials_show_weekly_dials(columnStripGenerationWeekly, 
 }
 
 
-
-
-
-
-
 /**
+ * Downloads CSV data by grabbing necessary information from the interface.
+ * @param {string}  name                 The name of the school.
+ * @param {Element} radioGroup           The $w ui component that represents the radio buttons group, from which the currently used installation is inferred.
+ * @param {Object}  date                 The currently viewed datetime object.
+ *
+ * */
+export function downloadCSV(name, radioGroup, date){
+    const installationName = radioGroup.options[radioGroup.selectedIndex].label
+    const correctedDate = date.getDate().toString() + "/" + (date.getMonth()+1).toString() +  "/" + date.getFullYear().toString()
 
-                D A T A   M A N I P U L A T I O N   F U N C T I O N S
- */
-
-
-export function add_standard_consumption_profile(){
-    $w("#ChartJsDaily").postMessage(["AddStandartConsumptionProfile!"])
+    $w("#DownloadCSVhtml").postMessage(["Download CSV file.", [name + installationName + " " +correctedDate]])
 }
-
-export function remove_standard_consumption_profile(){
-    $w("#ChartJsDaily").postMessage(["RemoveStandartConsumptionProfile!"])
-}
-

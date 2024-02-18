@@ -95,6 +95,68 @@
       I M P O R T A N T    H E L P E R    F U N C T I O N S
     */
 
+    /*
+        Creates standard consumption samples based out of a ground load (20 Watts) and then gaussian random samples of a fitted polynomial curve.
+        The polynomial curve is a fit from reference data from 'live-solar-data-demo'. The base load is preferred in the time window 0:00-04:00 and 17:00-24:00.
+     * @param   {float} time_sample           :   The time point to compute a consumption sample for.
+     * @return  {float} consumption_sample    :   The computed sample.
+     */
+    function createStandardConsumptionSamples(time_sample){
+        const base_level = 20
+
+        if (time_sample < 4 || time_sample > 17){
+            // base load is preferred, let the sample wiggle a little bit about it
+            return base_level+(2*Math.random())
+        }
+        else {
+            // curved fit function is preferred. Construct the curve fit with fixed parameters and then add noise to it.
+            const coefficient_list = [+0.00000596,-0.000505,+0.01664,-0.2646,+2.01,-6.,+5.,+21.].reverse()
+            function model_polynomial(x){
+                return coefficient_list.reduce(function(result, coeff, index) {
+                    return result + coeff * Math.pow(x, index);
+                }, 0);
+            }
+            const width = 5+5*Math.random()
+            return Math.abs(model_polynomial(time_sample)+(width*(generateRandomGaussian())))
+        }
+    }
+
+    /*
+    * Generates a random number from a normal distribution with mean 0 and sigma^2=1, using the box-mueller transform.
+    * */
+    function generateRandomGaussian() {
+        let u = 0,
+            v = 0;
+        while (u === 0) u = Math.random(); // Converting [0,1) to (0,1)
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    /*
+    * Uses 'createStandardConsumptionSamples' to create a standard consumption dataset, creates a new line graph
+    * for chart js and pushes the consumption data to the main wix velo code base.
+    *
+    * */
+    function createStandardConsumptionGraphSet(){
+        const standardConsumptionData = universalXarray.map(el=>createStandardConsumptionSamples(el))
+        const newDataset = {
+            type: 'bar',
+            fill: false,
+            showLine: false,
+            label: "Standard-Verbrauch (automatisch eingefügt)",
+            borderColor : tourquoise,
+            borderWidth: 2,
+            borderSkipped: false,
+            backgroundColor: tourquoise,
+            data: standardConsumptionData
+        }
+        const deployedURL = "https://www.solarbildung.org/bildung/fitting-interface"
+        window.parent.postMessage(["Update universal consumption array 'globalZArray'.",standardConsumptionData], deployedURL)
+        myChart.data.datasets[1] = newDataset
+    }
+
+
+
 
     /* Takes the time array, the left and right integration bounds as well as the optimal parameter list and returns the y array
     * corresponding to the fit values calculated in the integration bounds. Makes use of the PolyLib.js library. The parameter list
@@ -367,12 +429,14 @@
         let command = event.data[0]
         let context = event.data[1]
 
+        console.log("I got command: ", command)
+
         if (command === 'Download Png.'){
             const isChromium = context[0]
             download_png(isChromium)
         }
         else if (command === "Update universal x array (timestamps)."){
-            universalXarray = context
+            universalXarray = context[0]
         }
 
         else if(event.data[0].split(".")[0] === "POPT GEN"){
@@ -428,46 +492,55 @@
             myChart.update();
         }
 
-        else if (event.data[0] === "ChangeToPointStyle"){
+        else if (command === "Change graph to point style."){
+            console.log("trying to change to point style. ")
             myChart.data.datasets[0].type ="line"
             myChart.data.datasets[1].type ="line"
             myChart.update();
         }
-        else if (event.data[0]==="ChangeToBarStyle"){
+        else if (command ==="Change graph to bar style."){
             myChart.data.datasets[0].type ="bar"
             myChart.data.datasets[1].type ="bar"
             myChart.update();
         }
-        else if (event.data[0] === "AddStandartConsumptionProfile!"){
-            myChart.data.datasets[2].backgroundColor = "#00FFFF"
-
-            myChart.data.datasets[1].data = my_labels.map(function(value)			{
-                return UpdateFunction(value)
-            })
-            myChart.update();
+        else if (event.data[0] === "Add a standard consumption profile."){
+            // pass, not necessary as of 13.02.2024, since default behaviour on arrival of new data (see command === "Time, generation and possibly consumption data, non-demo.")
         }
         else if (event.data[0] === "RemoveStandartConsumptionProfile!"){
-            console.log("i aint doin nothing")
+            // pass, not necessary as of 13.02.2024
         }
 
-        else if (event.data[0] === "Time and generation data, non-demo."){
-            var PairOfxyTuples = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: keyAndValue[1]});
-            myChart.data.datasets[0].data = PairOfxyTuples
-            const length = PairOfxyTuples.length
-            var step = 24/(length-1)
+        else if (command === "Time, generation and possibly consumption data, non-demo."){
+            let PairOfXYTuples_generation = null
+            let PairOfXYTuples_consumption = null
+            if (Object.values(context)[0].length > 1){
+                // context is sub-subscriptable => There is consumption data!
+                PairOfXYTuples_generation = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][0])});
+                PairOfXYTuples_consumption = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][1])});
+                myChart.data.datasets[0].data = PairOfXYTuples_generation
+                myChart.data.datasets[1].data = PairOfXYTuples_consumption
+            }
+            else {
+                // no consumption data a priori => Use standard consumption samples!
+                PairOfXYTuples_generation = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: keyAndValue[1]});
+                myChart.data.datasets[0].data = PairOfXYTuples_generation
+                createStandardConsumptionGraphSet()
+            }
+            const length = PairOfXYTuples_generation.length
+            const step = 24/(length-1)
             myChart.data.labels = roundedFloatArray(0,24,step)
             myChart.update();
         }
-        else if (event.data[0] === "Time, generation and consumption data, demo."){
-            var PairOfxyTuples_generation = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][0])});
+        else if (command === "Time, generation and consumption data, demo."){
+            let PairOfxyTuples_generation = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][0])});
 
-            var PairOfxyTuples_consumption = Object.entries(event.data[1]).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][1])});
+            let PairOfxyTuples_consumption = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][1])});
 
             myChart.data.datasets[0].data = PairOfxyTuples_generation
             myChart.data.datasets[1].data = PairOfxyTuples_consumption
 
             const length = PairOfxyTuples_generation.length
-            var step = 24/(length-1)
+            const step = 24/(length-1)
             myChart.data.labels = roundedFloatArray(0,24,step)
             myChart.update();
 

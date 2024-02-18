@@ -3,7 +3,7 @@ import {
     global_information_window_log_in_success_generic,
     global_information_window_log_in_failure,
     hide_loader,
-    crossmark, global_information_window_log_in_success_victron
+    crossmark, global_information_window_log_in_success_victron, show_loader, reset_results_from_fit_and_hide_texts
 } from "../graphs-element-manipulation-functions";
 
 import {
@@ -51,15 +51,16 @@ export function returnPowerData_VictronSolution(data){
  * @param   {Element}   dailyDatePicker            : Something like $w("#DailyDatePicker").
  * @param   {Element}   nameOfSchoolText           : Something like $w("#NameDerSchule").
  * @param   {Element}   dailyChartJSInstance       : Something like $w("#ChartJsDaily")
+ * @param   {Boolean}   isChromium                 : Whether the currently in-used browser is chromium-based or not.
  *
  * @return {Promise<string>}    A promise that resolves to 'failure' or 'success'
  *
  */
-export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossmarkInstance,checkmarkInstance,  globalInformationWindow, radioGroupInstallations, dailyDatePicker, nameOfSchoolText, dailyChartJSInstance) {
+export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossmarkInstance,checkmarkInstance,  globalInformationWindow, radioGroupInstallations, dailyDatePicker, nameOfSchoolText, dailyChartJSInstance,isChromium) {
 
     return findBasicSchoolInformationFromID_VictronSolution(false , siteID).then(data =>{
         // hide the loading dots, then determine whether site associated with ID was found
-        hide_loader(loader)
+        hide_loader(loader, isChromium)
         let listOfInstallationsOfSite = Object.keys(data)
         if (listOfInstallationsOfSite.length === 0){
             // handle error: "No Site found."
@@ -81,10 +82,11 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
             for (const i of listOfInstallationsOfSite){
                 radioOptions.push({"label": data[i].installationName.split(",")[2], "value": data[i].installationID.toString()})
             }
-            // if more than one installation on a site, let the user be able to choose sum of all installations
-            if (listOfInstallationsOfSite.length > 1){
+            // if more than one installation on a site, let the user be able to choose sum of all installations. THIS IDEA WAS DEPRECATED BECAUSE NOT IMPLEMENTED (Fitting Interface v2.0)
+            /* if (listOfInstallationsOfSite.length > 1){
                 radioOptions.push({"label": "Summe (in Bearb.)", "value": "000000"})
             }
+            */
             radioGroupInstallations.options = radioOptions
 
             // set the min and max date on the calendar
@@ -106,8 +108,9 @@ export function InitializeWorkspace_VictronSolution_Daily(siteID,loader, crossma
                     })
                 }
                 dailyDatePicker.enabledDateRanges =  enabledDates
-                // set standard value for the day as the last day at which data was found,
-                const lastIndex = enabledDates.length-1
+                // set the standard value to the day before the last day at which data was recorded (which is typically
+                // today, so set the default value typically to yesterday)
+                const lastIndex = enabledDates.length-2
                 dailyDatePicker.value =  enabledDates[lastIndex]["startDate"]
 
                 dailyChartJSInstance.postMessage(["Clear any existing fits.", []])
@@ -323,3 +326,45 @@ export function fineTuneEnabledDateRanges_VictronSolution_Daily(datePicker, enab
 
 
 }
+
+/*
+* DEPRECATION WARNING
+* This function was a prototype for the sum of all installations radio button option.
+* In the future, we could think about reimplementing this, but for right now, it we cannot be done for time's sake.
+*
+function findAndFillWithSumOfAllData_Daily(){
+    show_loader($w('#Loader2Daily'), isChromium)
+    const date = $w('#DailyDatePicker').value
+    const radioOptions = $w('#radioGroupInstallations').options
+    /* This code is commented out because the idea behind the sum of installations was deprecated. Do not delete this comment in case the idea wants to be reimplemented in the future.
+    radioOptions.pop() // Removing last element since it corresponds to the sum of installation choice, which is a toy ID (000000)
+     */
+/*
+    const numberOfRadioOptions = radioOptions.length
+    console.log("numberOfRadioOptions ", numberOfRadioOptions , "radioOptions ", radioOptions)
+    let arrayOfDicts = []
+    for (const choice of radioOptions){
+        returnPowerData(false, date, choice.value).then(dataDictionary => {
+            arrayOfDicts.push(dataDictionary)
+            // if the length of sumArray is equal to the 'numberOfRadioOptions', then all promises must have resolved.
+            if (arrayOfDicts.length === numberOfRadioOptions){
+                const sumOfDataDictionary = {}
+                arrayOfDicts.forEach(dict => {
+                    for (let key in dict){
+                        if (dict.hasOwnProperty(key)){
+                            sumOfDataDictionary[key] = (sumOfDataDictionary[key] || 0) + dict[key]
+                        }
+                    }
+                })
+
+                pushGraphDataToPlotter($w("#ChartJsDaily"), sumOfDataDictionary)
+                reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
+                $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+                hide_loader($w('#Loader2Daily'), isChromium)
+            }
+        })
+    }
+}
+
+
+*/
