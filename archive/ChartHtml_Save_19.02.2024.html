@@ -135,10 +135,13 @@
     /*
     * Uses 'createStandardConsumptionSamples' to create a standard consumption dataset, creates a new line graph
     * for chart js and pushes the consumption data to the main wix velo code base.
+    * Also updates the GlobalZArray inside the main wix velo IDE code.
+    * Sends the current XArray an YArray as well with the message for convenience.
+    * Data is then used to construct the CSV blob that stores the data and makes it downloadable.
     *
     * */
-    function createStandardConsumptionGraphSet(){
-        const standardConsumptionData = universalXarray.map(el=>createStandardConsumptionSamples(el))
+    function createStandardConsumptionGraphSetAndSendUpdate(XArray, YArray){
+        const standardConsumptionData = universalXarray.map(el=>createStandardConsumptionSamples(el).toFixed(0).toString())
         const newDataset = {
             type: 'bar',
             fill: false,
@@ -151,7 +154,7 @@
             data: standardConsumptionData
         }
         const deployedURL = "https://www.solarbildung.org/bildung/fitting-interface"
-        window.parent.postMessage(["Update universal consumption array 'globalZArray'.",standardConsumptionData], deployedURL)
+        window.parent.postMessage(["Update universal consumption array 'globalZArray'. Context includes current XArray and YArray for convenience.",[XArray, YArray, standardConsumptionData]], deployedURL)
         myChart.data.datasets[1] = newDataset
     }
 
@@ -429,7 +432,6 @@
         let command = event.data[0]
         let context = event.data[1]
 
-        console.log("I got command: ", command)
 
         if (command === 'Download Png.'){
             const isChromium = context[0]
@@ -440,26 +442,28 @@
         }
 
         else if(event.data[0].split(".")[0] === "POPT GEN"){
+            let data = null
 
             if (event.data[0].split(".")[1] === "cosine"){
-                var data = universalXarray.map(function(time)			{
+                data = universalXarray.map(function(time)			{
                     return CosineUpdateFunction(time,event.data[1],event.data[2],event.data[3])
                 })
             }
             else if (event.data[0].split(".")[1] === "gauss"){
-                var data = universalXarray.map(function(time)			{
+                console.log("Its a gauss! inside chart js html")
+                data = universalXarray.map(function(time)			{
                     return GaussianUpdateFunction(time,event.data[1],event.data[2],event.data[3])
                 })
 
             }
             else{
-                var data = universalXarray.map(function(time)			{
+                data = universalXarray.map(function(time)			{
                     return PolynomialUpdateFunction(time,event.data[1],event.data[2],event.data[3])
 
                 })
             }
 
-            generation_fit_dict = {
+            const generation_fit_dict = {
                 type: 'line',
                 data: data,
                 fill: true,
@@ -469,16 +473,26 @@
                 label: 'Erzeugungs-Fit',
                 pointRadius: 0,
             }
-            myChart.data.datasets.push(generation_fit_dict)
+            const datasets = myChart.data.datasets
+            if (datasets.length < 3){
+                console.log("datasets length, ", datasets, " of length, ", datasets.length, " is smaller than 3, therefore I am pushing generation dict")
+                // generation fit dict doesnt exist yet => push
+                myChart.data.datasets.push(generation_fit_dict)
+            }
+            else {
+                console.log("I am actually replacing generation dict")
+                // generation fit dict exists already => just change data
+                myChart.data.datasets[2].data = generation_fit_dict.data
+            }
             myChart.update();
         }
         else if (event.data[0].split(".")[0] === "POPT CONSUMPTION"){
 
-            var data = universalXarray.map(function(time)			{
+            let data = universalXarray.map(function(time)			{
                 return PolynomialUpdateFunction(time,event.data[1],event.data[2],event.data[3])
             })
 
-            consumption_fit_dict = {
+            const consumption_fit_dict = {
                 type: 'line',
                 data: data,
                 fill: true,
@@ -488,12 +502,19 @@
                 label: 'Verbrauchs-Fit',
                 pointRadius: 0,
             }
-            myChart.data.datasets.push(consumption_fit_dict)
+            const datasets = myChart.data.datasets
+            if (datasets.length < 4){
+                // consumption fit dict doesnt exist yet => push
+                myChart.data.datasets.push(consumption_fit_dict)
+            }
+            else{
+                // consumption dict already exists => just change data
+                myChart.data.datasets[3].data = consumption_fit_dict.data
+            }
             myChart.update();
         }
 
         else if (command === "Change graph to point style."){
-            console.log("trying to change to point style. ")
             myChart.data.datasets[0].type ="line"
             myChart.data.datasets[1].type ="line"
             myChart.update();
@@ -523,13 +544,23 @@
             else {
                 // no consumption data a priori => Use standard consumption samples!
                 PairOfXYTuples_generation = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: keyAndValue[1]});
+                // createAndStoreCsvBlobInButton_GeneralSolution_Daily() which the reconstructed arrays are sent to
+                // wants the timestamps as integers and the Y and Z values as strings
+                const XArrayReconstructed = Object.keys(context).map(stringTimestamp => +stringTimestamp)
+                const YArrayReconstructed = Object.values(context).map(intGeneration => intGeneration.toString())
                 myChart.data.datasets[0].data = PairOfXYTuples_generation
-                createStandardConsumptionGraphSet()
+                createStandardConsumptionGraphSetAndSendUpdate(XArrayReconstructed, YArrayReconstructed)
             }
             const length = PairOfXYTuples_generation.length
             const step = 24/(length-1)
             myChart.data.labels = roundedFloatArray(0,24,step)
             myChart.update();
+        }
+        else if (command === "Send back well-defined X,Y and Z values."){
+            const deployedURL = "https://www.solarbildung.org/bildung/fitting-interface"
+            const YArray = myChart.data.datasets[0].data
+            const ZArray = myChart.data.datasets[1].data
+            window.parent.postMessage(["Update global variables X, Y and Z.",[universalXarray, YArray, ZArray]], deployedURL)
         }
         else if (command === "Time, generation and consumption data, demo."){
             let PairOfxyTuples_generation = Object.entries(context).map((keyAndValue) => obj = {x: +keyAndValue[0], y: parseInt(keyAndValue[1][0])});

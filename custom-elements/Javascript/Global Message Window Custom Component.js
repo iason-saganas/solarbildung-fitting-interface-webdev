@@ -20,6 +20,9 @@
             A T T R I B U T E S    T O    B E    S E T
 
             - 'text-message'            {string}    The message to display in the global message window.
+            - 'link-info'               {string}    A link that should be displayed at the end of 'text-message'.
+                                                    A string consisting of two parts, separated by a comma: the text
+                                                    to display, and the acutal link.
             - 'background-color'        {string}    The background color of the global message div.
             - 'color'                   {string}    The text color of the global message div.
             - 'font-size'               {string}    The font-size. Something like '3em' or '10px'. Also determines height of the icon!
@@ -78,7 +81,7 @@ const STYLE = `
 */
 
 
-function HTML_createWindow(set_visible, icon_url, color, background_color, text_message, font_size, image_height) {
+function HTML_createWindow(set_visible, icon_url, color, background_color, text_message, link_info=null, font_size, image_height) {
     let custom_element_instance = document.getElementById('Custom-Element-Global-Message-Window')
 
     // create the css for the custom element
@@ -95,6 +98,17 @@ function HTML_createWindow(set_visible, icon_url, color, background_color, text_
 
     custom_element_instance.appendChild(image)
     custom_element_instance.appendChild(text_node)
+
+    if (link_info && link_info!==""){
+        const description = link_info.split(",")[0]
+        const link = link_info.split(",")[1]
+        const linkElement = document.createElement('a')
+        linkElement.href = link
+        linkElement.target = "_blank"
+        linkElement.textContent = " : " + description
+        linkElement.style.color = "yellow"
+        custom_element_instance.appendChild(linkElement)
+    }
 
     custom_element_instance.style.color = color
     custom_element_instance.style.fontSize = font_size
@@ -125,10 +139,9 @@ class GlobalMessageWindow extends HTMLElement {
         attribute_dict[`${name}`] = newValue
         this.id = 'Custom-Element-Global-Message-Window'
 
-        if (Object.entries(attribute_dict).length === 7 && attribute_dict['set-visible'] === 'true'){
+        if ((Object.entries(attribute_dict).length === 7 || Object.entries(attribute_dict).length === 8 ) && attribute_dict['set-visible'] === 'true'){
 
             //console.log("the dict is complete, creating window. Length: ", Object.entries(attribute_dict).length, " and set visible is ", attribute_dict['set-visible'] )
-
 
             const set_visible = this.getAttribute('set-visible')
             const icon_url = this.getAttribute('icon-url')
@@ -138,6 +151,7 @@ class GlobalMessageWindow extends HTMLElement {
             const font_size = this.getAttribute('font-size')
             const icon_height = this.getAttribute('icon-height')
             const time_out = +this.getAttribute('time-out')
+            const link_info = this.getAttribute('link-info')
 
             // if there already exists an instance, clear its innerHTML and show it
             let custom_element_instance = document.getElementById('Custom-Element-Global-Message-Window')
@@ -146,10 +160,12 @@ class GlobalMessageWindow extends HTMLElement {
                 custom_element_instance.style.visibility = 'visible'
             }
 
-            HTML_createWindow(set_visible, icon_url, color, background_color,
-                text_message, font_size, icon_height)
-            JS_setTimeoutFade(time_out)
-
+            // perform sanity-check by constructing HTML only when text_message is non-empty string
+            if (text_message!==""){
+                HTML_createWindow(set_visible, icon_url, color, background_color,
+                    text_message, link_info, font_size, icon_height)
+                JS_setTimeoutFade(time_out)
+            }
             /*
             // clear everything after 'JS_setTimeoutFade()' which needs a bit more than 2100 milliseconds to execute.
             setTimeout(()=>{
@@ -179,7 +195,7 @@ class GlobalMessageWindow extends HTMLElement {
 
     // define which attributes 'attributeChangedCallback' should surveil
     static get observedAttributes() {
-        return ['text-message', 'background-color', 'color', 'set-visible','icon-url','font-size', 'icon-height'];
+        return ['text-message', 'background-color', 'color', 'set-visible','icon-url','font-size', 'icon-height', 'link-info'];
     }
 
 

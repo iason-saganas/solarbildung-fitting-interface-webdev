@@ -384,9 +384,11 @@ export function create_standard_consumption_samples(x_array){
 export function create_geogebra_command_string(xArray, yArray, y2Array, latexGeneration, latexConsumption){
     // the Xarray is the time array, Yarray the power array, Y2array the consumption array
 
-    const time_array =  xArray.map(el=>format_time_by_hours(el)) // universal X array inhours and minutes instead of a timestamp
-    const power_array_unpacked = yArray[0].map(el=>+el)
-    const consumption_array_unpacked = y2Array[0].map(el=>+el)
+
+    const time_array =  xArray
+    const power_array_unpacked = yArray.map(el=>+el.y)
+    const consumption_array_unpacked = y2Array.map(el=>+el.y)
+
 
     const time_power_tuples = zip([time_array, power_array_unpacked])
     const time_consumption_tuples = zip([time_array, consumption_array_unpacked])

@@ -98,6 +98,7 @@ const STYLE = `.Custom-Dropdown {
     }
 
     .Dropdown-Options-Wrapper{
+        z-index: 10;
         visibility: hidden;
         position: absolute;
     }
@@ -466,7 +467,6 @@ function createDOM(list_of_choices, base_ID, index_of_default_element, list_of_i
     JS_CloseDropdownIfClickOnlyOnBody(base_ID)
     JS_AddEventClickListenerDropdownChoices(list_of_image_urls, base_ID)
     JS_InsertDefaultImageIntoDropdownTrigger(default_image, base_ID)
-    JS_addClickListenerToDropdownImage(base_ID)
 }
 
 /**
@@ -544,24 +544,55 @@ class DropdownCustomComponent extends HTMLElement {
         // give it the base_ID as ID. Used in the helper function to find the custom element since it
         // didn't work to give the 'this' keyword as an argument to those functions.
         this.id = base_ID
+        this.default_image = list_of_urls[index_of_default_selected_element]
+        this.standard_tooltip = tooltip_text
 
         createDOM(list_of_options_to_chose_from, base_ID, index_of_default_selected_element, list_of_urls)
 
         // set the currently used image as the default image in order for onmouseout to grab it (function 'JS_handleImageSourceChangeOnMouseOut')
         let image = document.getElementById(`${base_ID}-Dropdown-Menu-Image`)
-        const default_image = list_of_urls[index_of_default_selected_element]
-        image.currentlyUsedImage = default_image
+        image.currentlyUsedImage = list_of_urls[index_of_default_selected_element]
 
 
         if (deactivated === 'true'){
-            // if 'tooltip_text' is not null, create the tooltip DOM and add hover listener to image
+            // create the deactivated state tooltip text
             HTML_createTooltipDOM(deactivated_tooltip_text, base_ID)
-            JS_addHoverTooltip(base_ID)
+            // change the image to the deactivated media url
+            let imageToChange = document.getElementById(`${base_ID}-Dropdown-Menu-Image`)
+            imageToChange.src = deactivated_media
         }
         else {
+            // add click event listener to image that makes the dropdown choices visible
+            JS_addClickListenerToDropdownImage(base_ID)
+            // if 'tooltip_text' is not null, create the tooltip DOM and add hover listener to image
             HTML_createTooltipDOM(tooltip_text, base_ID)
-            JS_addHoverTooltip(base_ID)
         }
-    }}
+        JS_addHoverTooltip(base_ID)
+    }
+
+    static get observedAttributes() {
+        return ['deactivated'];
+    }
+
+    attributeChangedCallback(name, oldValue, newValue) {
+        if ((name==='deactivated') && (newValue==='false')) {
+            if (this.default_image){
+                // only rund code after initialization.
+                /*
+                * icon is to be activated!
+                * 1. Change image, tooltip text
+                * 2. Add dropdown options and the ability to dispatch a custom click event
+                */
+                let imageToChange = document.getElementById(`${this.id}-Dropdown-Menu-Image`)
+                let tooltipToChange = document.getElementById(`${this.id}-tooltip`)
+                imageToChange.src = this.default_image
+                tooltipToChange.textContent = this.standard_tooltip
+                // add click event listener to image that makes the dropdown choices visible
+                JS_addClickListenerToDropdownImage(this.id)
+            }
+        }
+    }
+
+}
 
 customElements.define('custom-dropdown-component', DropdownCustomComponent);

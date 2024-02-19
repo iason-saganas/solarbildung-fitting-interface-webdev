@@ -316,3 +316,5 @@ export async function returnTimeAndPowerArrays_VictronSolution_Daily(debug, Site
 }
 
 
+
+

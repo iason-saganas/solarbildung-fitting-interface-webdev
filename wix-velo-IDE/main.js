@@ -98,10 +98,16 @@ import {
     hide_consumption_fit_dials,
     wipe_interface_clean,
     hide_weekly_dials_show_daily_dials,
-    hide_daily_dials_show_weekly_dials, global_information_window_new_installation_chosen
+    hide_daily_dials_show_weekly_dials,
+    global_information_window_new_installation_chosen,
+    runScriptButtonStylisticChanges,
+    runScriptButtonGetInterfaceParameters,
+    global_information_window_parameters_copied,
+    global_information_window_geogebra_code_copied
 } from 'public/graphs-element-manipulation-functions.js'
 
 import {
+    createAndStoreCsvBlobInButton_GeneralSolution_Daily,
     findAndProcessData_DemoSolution_Daily,
     InitializeWorkspace_DemoSolution_Daily
 } from "public/data-solutions/demo";
@@ -151,14 +157,14 @@ import {
  -  globalGenerationOptimalParametersArray:         Generation parameters array
  -  globalConsumptionOptimalParametersArray:        Consumption parameters array
  -  globalCalendarMode:                             One of 'daily', 'weekly'. Determines whether daily data or weekly aggregates are shown.
-                                                    Is updated via the 'CalendarModeTool' element.
+ Is updated via the 'CalendarModeTool' element.
  -  globalCustomerSolution:                         Stores the current in-use customer solution in a global variable.
  -  globalInstallationInformationObject:            This is a dictionary that contains information about different installations of a site. The
-                                                    information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
-                                                    stored here after first retrieval. Keys of object:
-                                                    -   'idOfCurrentlySelectedInstallation'
+ information is grabbed throughout various http calls and therefore expensive to retrieve, therefore
+ stored here after first retrieval. Keys of object:
+ -   'idOfCurrentlySelectedInstallation'
  -  isChromium                                      Whether or not the browser is chromium based. Information gotten from an in-page HTML element because of
-                                                    missing wix functionality.
+ missing wix functionality.
 
  */
 
@@ -172,6 +178,7 @@ var globalCalendarMode = 'daily'
 var globalCustomerSolution = 'Victron'
 var globalInstallationInformationObject = {}
 var isChromium = null // Boolean
+var geogebraCommand = null
 
 
 
@@ -277,6 +284,7 @@ function findAndFillWithData_Daily(){
         hide_loader($w('#Loader2Daily'), isChromium)
         pushGraphDataToPlotter($w("#ChartJsDaily"), dataDictionary)
         $w("#ChartJsDaily").postMessage(["Clear any existing fits.", []])
+        $w("#ChartJsDaily").postMessage(["Send back well-defined X,Y and Z values.", []])
     })
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
 }
@@ -307,12 +315,24 @@ $w.onReady(function () {
     $w('#ChartJsDaily').onMessage( event => {
         const command = event.data[0]
         const context = event.data[1]
-        if (command === "Update universal consumption array 'globalZArray'."){
-            // generated gaussian standard consumption curve
+        if (command === "Update universal consumption array 'globalZArray'. Context includes current XArray and YArray for convenience."){
+            // now that Z (consumption) data was calculated inside the chart js html element, update the global
+            // ZArray variable and construct the blob for the complete CSV data.
+            const [X, Y, Z] = context
             globalZArray.length = 0
-            globalZArray = [context]
+            globalZArray = [Z]
+            createAndStoreCsvBlobInButton_GeneralSolution_Daily($w("#DownloadCSVhtml"),X, [Y],  [Z])
         }
-        console.log("GLOBAL Z ARRAY: ", globalZArray)
+        else if (command === "Update global variables X, Y and Z."){
+            const [X, Y, Z] = context
+            globalXArray.length = 0
+            globalYArray.length = 0
+            globalZArray.length = 0
+
+            globalXArray = X // this looks like: [1.03, 1.12, 1.2 etc.]
+            globalYArray = Y // this looks like: [{x: 1707955320, y: 0}], so no extra brackets needed
+            globalZArray = Z // this looks like [{x: 1707955320, y: 21}], so no extra brackets needed
+        }
     })
 
 
@@ -381,240 +401,200 @@ $w.onReady(function () {
         }
     })
 
+    // Clear all button functionality
+    $w("#ClearAllButton").on('IconButtonClick', (data) => {
+        hide_consumption_fit_dials($w("#PolynomialDegreeSliderGeneration"), $w("#VerbrauchPolynomGradSliderBegleitText"),  $w("#TooltipTrigger2"),$w("#functionConsumptionFitTextHTML"), $w("#ParameterConsumptionCodeHTML"),$w("#functionLatexImageConsumption"))
+        reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
+        wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
+    })
+
+    $w("#RunScriptButton").on('IconButtonClick', (data) => {
+        // EXECUTE SCRIPT
+
+        // enable clear all and copy data to clipboard icon buttons
+        $w("#ClearAllButton").setAttribute('deactivated', 'false')
+        $w("#CopyToClipboardTool").setAttribute('deactivated', 'false')
+
+        // set style
+        runScriptButtonStylisticChanges(isChromium)
+
+        // get interface settings
+        const [functionNameGeneration, useConsumption, polynomialDegreeGeneration, polynomialDegreeConsumption] = runScriptButtonGetInterfaceParameters()
+        const xData = globalXArray
+        const yData = globalYArray.map(XYTupleAsDict => XYTupleAsDict.y)
+        const zDataDType = typeof(globalZArray[0])
+        let zData = null
+        if (zDataDType === 'string'){
+            // data was generated randomly from chart html element
+            zData = globalZArray.map(consumptionString => parseFloat(consumptionString))
+        }
+        else {
+            // data was read from pre-built xls files => dtype is object [{x: timestamp, y:value}]
+            zData = globalZArray.map(XZTupleAsDict => XZTupleAsDict.y)
+        }
+
+
+        console.log("Ich fütter ein: ", xData, [yData], [zData])
+
+        let collectedInterfaceSettings = {
+            CallingFrom: "LiveSolarData",
+            Debug : true,
+            Function: functionNameGeneration,
+            PolynomialDegree : polynomialDegreeGeneration,
+            PolynomialDegreeOfConsumption : polynomialDegreeConsumption,
+            XData : xData,
+            YData : [yData],
+            Y2Data: [zData],
+            UseConsumption: useConsumption
+        }
+
+        // run python script via HTTP request
+        // runScriptButtonExecuteHTTP(collectedInterfaceSettings)
+
+        postHttpRequest("https://iason2ctrl.pythonanywhere.com/dummyAPI",collectedInterfaceSettings).then((HTTPresponse)=>{
+
+            hide_loader($w("#Loader2Daily"),isChromium)
+
+            // var language = wixWindowFrontend.multilingual.currentLanguage; // "en" or "es" or "de" // CORRECT THIS
+            let language = "de"
+
+            console.log("message from fit server received:")
+            console.log(HTTPresponse)
+            const JSONresponse = JSON.parse(HTTPresponse)
+
+            const numericalInstability = JSONresponse["warning_numerical_instability"].toString()
+            const erzeugungsPOPT = Object.values(JSONresponse["generation_parameters"])
+            if (JSONresponse["consumption_parameters"]!==null){
+                var consumption_parameters = Object.values(JSONresponse["consumption_parameters"])
+            }
+            globalGenerationOptimalParametersArray.length=0
+            globalGenerationOptimalParametersArray.push(erzeugungsPOPT) // so that copy to clipboard button can grab the data
+
+            globalConsumptionOptimalParametersArray.length=0
+            globalConsumptionOptimalParametersArray.push(consumption_parameters) // so that copy to clipboard button can grab the data
+
+            let aStar = JSONresponse["left_fit_bound_time"]
+            let bStar = JSONresponse["right_fit_bound_time"]
+            const chosenFunction = $w("#FunctionChoiceGenerationDropDown").value
+            $w("#ChartJsDaily").postMessage([`POPT GEN.${chosenFunction}`,aStar,bStar,erzeugungsPOPT])
+            if (useConsumption){
+                $w("#ChartJsDaily").postMessage([`POPT CONSUMPTION.Polynomial`,0,24,consumption_parameters])
+            }
+
+            let left = null
+            let right = null
+            let and = null
+
+            if (language==="es"){
+                left = "azquierda";
+                right = "derecha"
+                and = "y"
+            }
+            else if (language==="de"){
+                left = "links";
+                right = "rechts"
+                and = "und"
+            }
+            else if (language==="en"){
+                left = "left";
+                right = "right"
+                and = "and"
+            }
+
+
+            const functionName = JSONresponse["function_generation_name"]
+
+
+            aStar = aStar.toString()+ ` h (${left}) ${and} `
+            bStar = bStar.toString()+ ` h (${right})`
+
+            let rootLeft = null
+            let rootRight = null
+
+
+            const latexStringGen = JSONresponse["function_name_generation_latex_string"]
+            const latexStringConsumption = JSONresponse["function_name_consumption_latex_string"]
+            if (JSONresponse["generation_roots"]!=undefined && JSONresponse["generation_roots"][0]!=undefined){
+                rootLeft = JSONresponse["generation_roots"][0].toString()+ ` h (${left})`
+            }
+            if (JSONresponse["generation_roots"]!=undefined && JSONresponse["generation_roots"][1]!=undefined){
+                rootRight = JSONresponse["generation_roots"][1].toString() + ` h (${right})`
+                rootLeft += ` ${and} ` + rootRight
+            }
+            const help = JSONresponse["polynomial_degree_generation"]
+
+
+            if (help<3 && help!=null){
+                if (language=="es"){rootLeft = "Sin cálculo de raíces de la función para grado de polinomio <3."}
+                else if (language=="de"){rootLeft = "Für Polygrad < 3 keine Nullstellen Berechnung."}
+                else if (language=="en"){rootLeft = "Roots not calculated for polynomial degrees <2."}
+                rootRight = ""
+            }
+
+            if (functionName=="Gaussian"){
+                rootLeft ="- - -"
+            }
+
+
+            let latexConsumptionContribution = ""
+            if (useConsumption){
+                latexConsumptionContribution = latexStringConsumption.replace(/\$/g,"")
+            }
+            geogebraCommand = create_geogebra_command_string(globalXArray, globalYArray, globalZArray,latexStringGen.replace(/\$/g,""), latexConsumptionContribution) // get rid of dollar signs needed for mathjax
+
+            const actualEnergySum = (Math.round((JSONresponse["approximated_total_energy"] + Number.EPSILON) * 100) / 100).toFixed(2).toString()+" Wh"
+            const abweichungDesIntegrals = (100*((Math.round((JSONresponse["energy_quotient"] + Number.EPSILON) * 10000) / 10000))).toFixed(2).toString()+" %"
+
+            $w("#EnergieKontrollErgebnis").text = actualEnergySum
+            $w("#AbweichungDesIntegrals").text = abweichungDesIntegrals
+            $w("#Nullstellen").text = rootLeft  // == rootLeft + rootRight if (rootRight)
+            $w("#GrenzenFitintervall").text = aStar + bStar
+            $w("#functionFitTextHTML").postMessage([latexStringGen])
+            $w("#ParameterGenCodeHTML").postMessage([create_latex_param(functionName,erzeugungsPOPT)])
+            if (useConsumption){
+                $w("#ParameterConsumptionCodeHTML").postMessage([create_latex_param("Polynomial",consumption_parameters)])
+                $w("#functionConsumptionFitTextHTML").postMessage([latexStringConsumption])
+            }
+            if (numericalInstability=="true"){
+                //$w("#NumerischInstabil").text = "Numerisch instabil."
+                //$w("#NumericalInstablityGroup").show()
+            }
+            else{
+                //$w("#NumericalInstablityGroup").hide()
+            }
+        })
+
+
+
+    })
+
     $w("#CopyToClipboardTool").on('DropdownChoice', (data)=>{
         const index_of_selected_choice = data.detail
-        if (index_of_selected_choice == 0){
-            copy_parameter_list_generation()
+        if (index_of_selected_choice === 0){
+            wixWindow.copyToClipboard(`${globalGenerationOptimalParametersArray}`)
+            global_information_window_parameters_copied($w("#GlobalInformationWindow"))
         }
-        else if (index_of_selected_choice == 1){
-            copy_parameter_list_consumption()
+        else if (index_of_selected_choice === 1){
+            wixWindow.copyToClipboard(`${globalConsumptionOptimalParametersArray}`)
+            global_information_window_parameters_copied($w("#GlobalInformationWindow"))
         }
-        else if (index_of_selected_choice == 2){
-            copy_geogebra_code()
+        else if (index_of_selected_choice === 2){
+            wixWindow.copyToClipboard(geogebraCommand)
+            global_information_window_geogebra_code_copied($w("#GlobalInformationWindow"))
         }
     })
 
 
 
 
-    $w("#optionOverviewGray").hide()            // Hide the overview option gray span, since the blue version is the default
-    // $w("#errorGroup").hide()                    // Hide the error box
     $w("#radioGroupInstallations").disable();   // This is going to be enabled with the initialize_workspace function
 
 });
 
 
-export function FitOptionButton_click(event) {
 
 
 
-    $w("#optionOverviewGray").show()
-    $w("#optionOverviewBlue").hide()
-    $w("#OptionFitBlue").show()
-    $w("#OptionFitGray").hide()
-
-    $w("#ResultBox").show()
-    $w("#FitButton").show()
-    change_graph_style_to_point($w("#ChartJsDaily"))
-}
-
-
-export function OptionInformationButton_click(event) {
-
-
-
-    $w("#optionOverviewGray").show()
-    $w("#optionOverviewBlue").hide()
-    $w("#OptionFitBlue").hide()
-    $w("#OptionFitGray").show()
-
-    $w("#ResultBox").hide()
-    $w("#FitButton").hide()
-
-
-}
-
-
-export function FitButton_click(event) {
-
-    $w("#HourGlassAnimationHTML").show()
-    $w("#copyGenPoptButton").hide()
-    //$w("#EnergieKontrollErgebnis").text = "."
-    $w("#AbweichungDesIntegrals").text = "."
-    $w("#Nullstellen").text = "."
-    $w("#GrenzenFitintervall").text = "."
-    $w("#functionFitTextHTML").postMessage(["Clear pre existing information!"])
-    $w("#functionConsumptionFitTextHTML").postMessage(["Clear pre existing information!"])
-    $w("#ParameterGenCodeHTML").postMessage(["Clear pre existing information!"])
-    $w("#ParameterConsumptionCodeHTML").postMessage(["Clear pre existing information!"])
-    //$w("#NumericalInstablityGroup").hide()
-
-    // make the text fields that are filled with information once the python server responds with the fit information visible now
-    //$w("#EnergieKontrollErgebnis").show()
-    $w("#AbweichungDesIntegrals").show()
-    $w("#Nullstellen").show()
-    $w("#GrenzenFitintervall").show()
-
-
-    var functionName = $w("#FunctionChoiceDropDown").value
-    if (functionName=="polynomialFunctionOfDegreeN"){
-        var polynomialDegree = $w("#PolynomGradSlider").value
-    }
-    else if(functionName=="constantFunction"){
-        var polynomialDegree = 0
-    }
-    else if(functionName=="linearFunction"){
-        var polynomialDegree = 1
-    }
-    else if(functionName =="quadraticFunction"){
-        var polynomialDegree = 2
-    }
-    const use_consumption = $w("#FitConsumptionCheckBox").checked
-    if (use_consumption){
-        var polynomialDegreeOfConsumption = $w("#PolynomgradSliderVerbrauch").value
-    }
-    else{
-        var polynomialDegreeOfConsumption = -1 // placeholder value. Not used since in this cases use_consumption==false. Also: clear existing consumption fits.
-    }
-
-    const yData = [globalYArray[0].map(el=>parseFloat(el))]  // again, its convention to put y values into additional brackets, the map functions ensures that no strings are passed but actual floats
-    const xData = globalXArray.map(el=>convert_time_string_to_int(format_time(el)))
-    const y2Data = [globalZArray[0].map(el=>parseFloat(el))] // consumption data
-
-    var GesammelteParameter = {CallingFrom: "LiveSolarData", Debug : true, Function: functionName, PolynomialDegree : polynomialDegree, PolynomialDegreeOfConsumption : polynomialDegreeOfConsumption,
-        XData : xData, YData : yData, Y2Data: y2Data, UseConsumption: use_consumption}
-
-    postHttpRequest("https://iason2ctrl.pythonanywhere.com/dummyAPI",GesammelteParameter).then((HTTPresponse)=>{
-
-        var language = wixWindowFrontend.multilingual.currentLanguage; // "en" or "es" or "de"
-
-        $w("#HourGlassAnimationHTML").hide()
-        console.log("message from fit server received:")
-        console.log(HTTPresponse)
-        const JSONresponse = JSON.parse(HTTPresponse)
-
-        const numericalInstability = JSONresponse["warning_numerical_instability"].toString()
-        const erzeugungsPOPT = Object.values(JSONresponse["generation_parameters"])
-        if (JSONresponse["consumption_parameters"]!==null){
-            var consumption_parameters = Object.values(JSONresponse["consumption_parameters"])
-        }
-        globalGenerationOptimalParametersArray.length=0
-        globalGenerationOptimalParametersArray.push(erzeugungsPOPT) // so that copy to clipboard button can grab the data
-
-        globalConsumptionOptimalParametersArray.length=0
-        globalConsumptionOptimalParametersArray.push(consumption_parameters) // so that copy to clipboard button can grab the data
-
-        let aStar = JSONresponse["left_fit_bound_time"]
-        let bStar = JSONresponse["right_fit_bound_time"]
-        const chosenFunction = $w("#FunctionChoiceDropDown").value
-        $w("#ChartJsDaily").postMessage([`POPT GEN.${chosenFunction}`,aStar,bStar,erzeugungsPOPT])
-        if (use_consumption){
-            $w("#ChartJsDaily").postMessage([`POPT CONSUMPTION.Polynomial`,0,24,consumption_parameters])
-        }
-
-        if (language=="es"){
-            var left = "azquierda"
-            var right = "derecha"
-            var and = "y"
-        }
-        else if (language=="de"){
-            var left = "links"
-            var right = "rechts"
-            var and = "und"
-        }
-        else if (language=="en"){
-            var left = "left"
-            var right = "right"
-            var and = "and"
-        }
-
-
-        const functionName = JSONresponse["function_generation_name"]
-
-
-        aStar = aStar.toString()+ ` h (${left}) ${and} `
-        bStar = bStar.toString()+ ` h (${right})`
-
-
-        const latexStringGen = JSONresponse["function_name_generation_latex_string"]
-        const latexStringConsumption = JSONresponse["function_name_consumption_latex_string"]
-        if (JSONresponse["generation_roots"]!=undefined && JSONresponse["generation_roots"][0]!=undefined){
-            var rootLeft = JSONresponse["generation_roots"][0].toString()+ ` h (${left})`
-        }
-        if (JSONresponse["generation_roots"]!=undefined && JSONresponse["generation_roots"][1]!=undefined){
-            var rootRight = JSONresponse["generation_roots"][1].toString() + ` h (${right})`
-            rootLeft += ` ${and} ` + rootRight
-        }
-        const help = JSONresponse["polynomial_degree_generation"]
-
-
-        if (help<3 && help!=null){
-            if (language=="es"){var rootLeft = "Sin cálculo de raíces de la función para grado de polinomio <3."}
-            else if (language=="de"){var rootLeft = "Für Polygrad < 3 keine Nullstellen Berechnung."}
-            else if (language=="en"){var rootLeft = "Roots not calculated for polynomial degrees <2."}
-            var rootRight = ""
-        }
-
-        if (functionName=="Gaussian"){
-            var rootLeft ="- - -"
-        }
-
-        // TEST TEST TEST TEST
-
-        wixWindow.copyToClipboard(create_geogebra_command_string(globalXArray, globalYArray, globalZArray,latexStringGen.replace(/\$/g,""), latexStringConsumption.replace(/\$/g,""))) // get rid of dollar signs needed for mathjax
-
-        const actualEnergySum = (Math.round((JSONresponse["approximated_total_energy"] + Number.EPSILON) * 100) / 100).toFixed(2).toString()+" Wh"
-        const abweichungDesIntegrals = (100*((Math.round((JSONresponse["energy_quotient"] + Number.EPSILON) * 10000) / 10000))).toFixed(2).toString()+" %"
-
-        $w("#copyGenPoptButton").show()
-        if (use_consumption){
-            $w("#copyConsumptionPoptButton").show()
-        }
-        $w("#EnergieKontrollErgebnis").text = actualEnergySum
-        $w("#AbweichungDesIntegrals").text = abweichungDesIntegrals
-        $w("#Nullstellen").text = rootLeft  // == rootLeft + rootRight if (rootRight)
-        $w("#GrenzenFitintervall").text = aStar + bStar
-        $w("#functionFitTextHTML").postMessage([latexStringGen])
-        $w("#ParameterGenCodeHTML").postMessage([create_latex_param(functionName,erzeugungsPOPT)])
-        if (use_consumption){
-            $w("#ParameterConsumptionCodeHTML").postMessage([create_latex_param("Polynomial",consumption_parameters)])
-            $w("#functionConsumptionFitTextHTML").postMessage([latexStringConsumption])
-        }
-        if (numericalInstability=="true"){
-            //$w("#NumerischInstabil").text = "Numerisch instabil."
-            //$w("#NumericalInstablityGroup").show()
-        }
-        else{
-            //$w("#NumericalInstablityGroup").hide()
-        }
-    })
-}
-
-
-
-
-
-
-export function FunctionChoiceDropDown_change(event) {
-    $w("#copyGenPoptButton").hide()
-
-    reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
-    wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
-
-    // enable fit Button
-    $w("#FitButton").enable()
-
-    //$w("#LatexHTML").postMessage([$w("#FunctionChoiceDropDown").value])
-
-    if ($w("#FunctionChoiceDropDown").value=="polynomialFunctionOfDegreeN"){
-        $w("#PolynomGradSlider").show()
-        $w("#ErzeugungPolynomGradSliderBegleitText").show()
-    }
-    else {
-        $w("#PolynomGradSlider").hide()
-        $w("#ErzeugungPolynomGradSliderBegleitText").hide()
-    }
-}
 
 
 export function DailyDatePicker_change(event) {
@@ -770,7 +750,7 @@ export function copyConsumptionPoptButton_click(event) {
 
 
 export function ClearExistingFitsButton_click(event) {
-    hide_consumption_fit_dials($w("#PolynomgradSliderVerbrauch"), $w("#VerbrauchPolynomGradSliderBegleitText"),  $w("#TooltipTrigger2"),$w("#functionConsumptionFitTextHTML"), $w("#ParameterConsumptionCodeHTML"),$w("#functionLatexImageConsumption"))
+    hide_consumption_fit_dials($w("#PolynomialDegreeSliderGeneration"), $w("#VerbrauchPolynomGradSliderBegleitText"),  $w("#TooltipTrigger2"),$w("#functionConsumptionFitTextHTML"), $w("#ParameterConsumptionCodeHTML"),$w("#functionLatexImageConsumption"))
     reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
     wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
 }
@@ -780,8 +760,41 @@ export function ClearExistingFitsButton_click(event) {
 
 export function FunctionChoiceConsumptionDropdown_change(event) {
     const choice = $w("#FunctionChoiceConsumptionDropdown").selectedIndex
-    if (choice==1){
-        $w("#PolynomgradSliderVerbrauch").show()
+    if (choice===1){
+        $w("#PolynomialDegreeSliderConsumption").show()
+    }
+}
+
+
+
+
+/**
+ * Event handler, that fires when a new generation function choice has been made.
+ *
+ * ** NOTE **
+ * Already uses some refactored styling functions, but others are styles are implemented still by explicitly
+ * calling the $w ui components directly.
+ * I will leave this for now, so I can understand the implemented functionality
+ * when I eventually refactor this.
+ *
+ * */
+export function FunctionChoiceGenerationDropDown_change(event) {
+
+
+    reset_results_from_fit_and_hide_texts($w("#EnergieKontrollErgebnis"),$w("#AbweichungDesIntegrals"), $w("#Nullstellen"),$w("#GrenzenFitintervall"))
+    wipe_interface_clean( $w("#functionFitTextHTML"), $w("#functionConsumptionFitTextHTML"),$w("#ParameterGenCodeHTML"),$w("#ParameterConsumptionCodeHTML"),$w("#ChartJsDaily"))
+
+    // enable fit Button
+    $w('#RunScriptButton').setAttribute('deactivated', 'false')
+
+
+    if ($w("#FunctionChoiceGenerationDropDown").value=="polynomialFunctionOfDegreeN"){
+        $w("#PolynomialDegreeSliderGeneration").show()
+        $w("#ErzeugungPolynomGradSliderBegleitText").show()
+    }
+    else {
+        $w("#PolynomialDegreeSliderGeneration").hide()
+        $w("#ErzeugungPolynomGradSliderBegleitText").hide()
     }
 }
 

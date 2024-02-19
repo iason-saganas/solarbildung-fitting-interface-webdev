@@ -171,8 +171,6 @@ function JS_IconButtonWixVeloCommunication(base_ID){
     const dispatch_event_information = {detail: true}
     const custom_event = new CustomEvent('IconButtonClick', dispatch_event_information)
 
-    custom_element_instance.dispatchEvent(custom_event)
-
     custom_element_instance.addEventListener('click', event => custom_element_instance.dispatchEvent(custom_event))
 
 }
@@ -271,6 +269,9 @@ class IconButtonCustomComponent extends HTMLElement {
         // give it the base_ID as ID. Used in the helper function to find the custom element since it
         // didn't work to give the 'this' keyword as an argument to those functions.
         this.id = base_ID
+        this.default_image = default_image
+        this.hover_image = hover_image
+        this.standard_tooltip_text = tooltip_text
 
         if (deactivated === 'true'){
             HTML_createOnlyImage(base_ID, deactivated_media)
@@ -279,13 +280,13 @@ class IconButtonCustomComponent extends HTMLElement {
             HTML_createOnlyImage(base_ID, list_of_urls[index_of_default_selected_element])
             JS_IconButtonHover(hover_image,default_image,base_ID)
         }
-        JS_IconButtonWixVeloCommunication(base_ID)
 
         if (deactivated === 'true'){
             HTML_createTooltipDOM(deactivated_tooltip_text, base_ID)
             JS_addHoverTooltip(base_ID)
         }
         else if (tooltip_text){
+            JS_IconButtonWixVeloCommunication(base_ID)
             // if 'tooltip_text' is not null, create the tooltip DOM and add hover listener to image
             HTML_createTooltipDOM(tooltip_text, base_ID)
             JS_addHoverTooltip(base_ID)
@@ -296,8 +297,29 @@ class IconButtonCustomComponent extends HTMLElement {
         }
     }
 
+    static get observedAttributes() {
+        return ['deactivated'];
+    }
+
     attributeChangedCallback(name, oldValue, newValue) {
-        alert("change")
+        if ((name==='deactivated') && (newValue==='false')){
+            /*
+            * icon is to be activated!
+            * 1. Change image and tooltip text
+            * 2. Send back message that icon was activated?
+            */
+            const imageId = `${this.id}-Dropdown-Menu-Image`
+            const tooltipID = `${this.id}-tooltip`
+            let imageToChange = document.getElementById(imageId)
+            let tooltipToChange = document.getElementById(tooltipID)
+
+            imageToChange.src = this.default_image
+            tooltipToChange.textContent = this.standard_tooltip_text
+            JS_IconButtonHover(this.hover_image,this.default_image,this.id)
+
+            JS_IconButtonWixVeloCommunication(this.id)
+
+        }
     }
 
 }

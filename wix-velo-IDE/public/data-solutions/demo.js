@@ -105,7 +105,6 @@ export function postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJ
  * @param   {Object}    YArray                     : The power generation array to store.
  * @param   {Object}    ZArray                     : The power consumption array to store.
  *
- * @return {void}
  *
  */
 
@@ -153,6 +152,14 @@ export function findAndProcessData_DemoSolution_Daily(datePickerValue,chartJsIns
     return returnTimeAndPowerArrays_DemoSolution_Daily(datePickerValue).then(result => {
         const [XArray, YArray, ZArray, dictOfXYZ] = result
         postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
+        /* When ZArray (consumption) data is shipped with the solution (e.g., demo, victron, UKdb), then create the blob
+        * that stores CSV data right here, inside the `findAndProcessData_{dataSolution}_Daily` function.
+        * So note inside `findAndProcessData_VictronSolution_Daily` function for a comment on how it is handled when
+        * a solution does not come equipped with consumption data.
+        * Note: I am not sure as of 19.02.2024 how to handle the case of UKdb data having consumption data for one day,
+        * but not for another. Demo solution always has consumption data a priori by construction.
+        * Victron solution always has consumption data a posteriori by construction inside ChartJSInstance.
+        * */
         createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
         return dictOfXYZ
 

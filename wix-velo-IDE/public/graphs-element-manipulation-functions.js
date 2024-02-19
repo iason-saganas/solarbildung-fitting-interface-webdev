@@ -1,5 +1,6 @@
 import {returnPowerData} from "../backend/custom-media-backend";
-import {returnTimeAndPowerArrays_VictronSolution_Daily} from "../backend/custom-http";
+import {postHttpRequest, returnTimeAndPowerArrays_VictronSolution_Daily} from "../backend/custom-http";
+import {create_geogebra_command_string, create_latex_param} from "./graphs-custom-helper-functions";
 
 const ALL_STYLISTIC = ['hide_element', 'global_information_window_update_attributes', 'global_information_window_log_in_success_generic',
                         'global_information_window_log_in_success_victron','global_information_window_log_in_failure', 'checkmark', 'crossmark', 'show_loader', 'hide_loader',
@@ -38,16 +39,19 @@ export function hide_element(selectedElement){
  * @param  {string} font_size           : The font size, e.g. in px or em.
  * @param  {string} icon_height         : The height of the icon in e.g. em.
  * @param  {string} text_message        : The text message to display.
+ * @param  {string} linkInfo            : Contains information on a link to be displayed at the end of the text message.
+ *                                        Should have two parts, separated by a comma: The text to display, the actual
+ *                                        link.
  * @param  {string} time_out            : How long to display the message before it vanishes.
- * @param  {string} set_visible         : 'true' or 'false'. Should the global message window become visible?
+ * @param  {string, void} set_visible         : 'true' or 'false'. Should the global message window become visible?
  *
  * @return {void}
  *
  */
-export function global_information_window_update_attributes(globalWindow,icon_url, background_color, color, font_size, icon_height, text_message, time_out, set_visible){
+export function global_information_window_update_attributes(globalWindow,icon_url, background_color, color, font_size, icon_height, text_message, time_out, set_visible,linkInfo=null){
 
     const custom_element_args_values = [...arguments].slice(1) // remove 'selectedElement' from the 'custom_element_args_values' list.
-    const custom_element_args_names = ['icon-url', 'background-color', 'color', 'font-size', 'icon-height', 'text-message', 'time-out', 'set-visible']
+    const custom_element_args_names = ['icon-url', 'background-color', 'color', 'font-size', 'icon-height', 'text-message', 'time-out', 'set-visible','link-info']
 
     custom_element_args_values.forEach((value, counter_index)=>{
         globalWindow.setAttribute(custom_element_args_names[counter_index], value)
@@ -56,7 +60,7 @@ export function global_information_window_update_attributes(globalWindow,icon_ur
 
     // clear window for next message by changing all attributes.
     setTimeout(()=>{
-        const clear_custom_element_args_values = ['', 'rgba(0,0,0,0)', '', '', '', '', '100', '']
+        const clear_custom_element_args_values = ['', 'rgba(0,0,0,0)', '', '', '', '', '100', '', '']
         clear_custom_element_args_values.forEach((value, counter_index)=>{
             globalWindow.setAttribute(custom_element_args_names[counter_index], value)
         })
@@ -83,6 +87,16 @@ export function global_information_window_log_in_success_victron(globalWindow){
     global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_223d6f8e60f849b78ffafce108b4868f~mv2.png',
         '#7AC142', 'white', '2em', '2em', 'Willkommen zurück! Während Sie arbeiten, verfeinern wir den Terminkalender, ' +
         ' um nur Tage mit zuverlässigen Daten anzuzeigen.', '7000', 'true')
+}
+
+export function global_information_window_parameters_copied(globalWindow){
+    global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_80876ac53eb64b348957dd0a6299d183~mv2.png',
+        '#589BFF', 'white', '2em', '2em', 'Parameter kopiert!', '3000', 'true')
+}
+
+export function global_information_window_geogebra_code_copied(globalWindow){
+    global_information_window_update_attributes(globalWindow, 'https://static.wixstatic.com/media/fdb700_80876ac53eb64b348957dd0a6299d183~mv2.png',
+        '#589BFF', 'white', '2em', '2em', 'Geogebra Code kopiert! Hier ist das ', '9000', 'true', ' GeoGebra Projekt.,https://www.geogebra.org/calculator/yz8s9qs5')
 }
 
 export function global_information_window_new_installation_chosen(globalWindow){
@@ -310,7 +324,7 @@ export function wipe_interface_clean(functionFitGenerationTextHtml, functionFitC
     functionFitConsumptionTextHtml.postMessage(["Clear pre existing information!"])
     parameterGenerationCodeHtml.postMessage(["Clear pre existing information!"])
     parameterConsumptionCodeHtml.postMessage(["Clear pre existing information!"])
-    chartJsInstance.postMessage(["Please clear any existing fits."])
+    chartJsInstance.postMessage(["Clear any existing fits."])
 }
 
 
@@ -366,3 +380,68 @@ export function downloadCSV(name, radioGroup, date){
 
     $w("#DownloadCSVhtml").postMessage(["Download CSV file.", [name + installationName + " " +correctedDate]])
 }
+
+/**
+ * Executes necessary stylistic changes needed when the script is to be executed by directly calling $w ui components.
+ *
+ * @param {Boolean} isChromium           : Whether the current browser is chromium based or not. Is needed to fix a bug.
+ *                                         It has to be passed as argument because wix has no functionality to retrieve
+ *                                         it here.
+ *
+ * */
+export function runScriptButtonStylisticChanges(isChromium){
+    show_loader($w("#Loader2Daily"), isChromium)
+    $w("#EnergieKontrollErgebnis").text = "."
+    $w("#AbweichungDesIntegrals").text = "."
+    $w("#Nullstellen").text = "."
+    $w("#GrenzenFitintervall").text = "."
+    $w("#functionFitTextHTML").postMessage(["Clear pre existing information!"])
+    $w("#functionConsumptionFitTextHTML").postMessage(["Clear pre existing information!"])
+    $w("#ParameterGenCodeHTML").postMessage(["Clear pre existing information!"])
+    $w("#ParameterConsumptionCodeHTML").postMessage(["Clear pre existing information!"])
+    //$w("#NumericalInstablityGroup").hide()
+
+    // make the text fields that are filled with information once the python server responds with the fit information visible now
+    $w("#EnergieKontrollErgebnis").show()
+    $w("#AbweichungDesIntegrals").show()
+    $w("#Nullstellen").show()
+    $w("#GrenzenFitintervall").show()
+}
+
+/**
+ * Finds and returns the current settings in the interface to run the python script. Calls $w ui components directly.
+ *
+ * */
+export function runScriptButtonGetInterfaceParameters(){
+    // get the generation function name
+    let functionNameGeneration = $w("#FunctionChoiceGenerationDropDown").value
+
+    // if the function name is some kind of polynomial, define and find the degree of the generation polynomial
+    const possiblePolynomialFunctionNames = ['polynomialFunctionOfDegreeN', 'constantFunction', 'linearFunction', 'quadraticFunction',]
+    const associatedPolynomialDegrees = [$w("#PolynomialDegreeSliderGeneration").value, 0, 1, 2]
+    let polynomialDegreeGeneration = null
+    if (possiblePolynomialFunctionNames.includes(functionNameGeneration)){
+        const index = possiblePolynomialFunctionNames.indexOf(functionNameGeneration)
+        polynomialDegreeGeneration = associatedPolynomialDegrees[index]
+    }
+
+    // check whether consumption should be fitted as well or not (polynomial function only choice)
+    const useConsumption = ($w("#FunctionChoiceConsumptionDropdown").value === "PolynomialConsumptionFunction")
+    let polynomialDegreeConsumption = null
+    if (useConsumption){
+        polynomialDegreeConsumption = $w("#PolynomialDegreeSliderConsumption").value
+    }
+
+    return [functionNameGeneration, useConsumption, polynomialDegreeGeneration, polynomialDegreeConsumption]
+
+
+}
+
+
+/**
+ * Actually executes the python script via a HTTP request
+ *
+ *
+ * */
+//export function runScriptButtonExecuteHTTP(GesammelteParameter){
+//}

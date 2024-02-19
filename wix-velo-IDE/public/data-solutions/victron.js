@@ -260,17 +260,30 @@ function constructStartEndArray_VictronSolution(unixTimestampCreationInstallatio
  * @param  {object}     datePickerValue            : The datetime object representing the chosen date, value of the datepicker element.
  * @param  {string}     SiteID                     : The Victron's Site ID. Passed as e.g. '$w("#radioGroupInstallations").value'
  * @param  {Element}    chartJsInstance            : The chart js instance grabbed with '$w("...")'
- * @param  {Element}    CsvDownloadButtonElement   : The button at which the csv blob is stored, grabbed by '$w("...")'. E.g. $w("#DownloadCSVhtml").
  *
  * @return {Promise<object>}    : A promise that resolves to a dictionary object containing triples of x, y and z values (time, generation, consumption).
  *
  */
-export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID, chartJsInstance, CsvDownloadButtonElement){
+export function findAndProcessData_VictronSolution_Daily(datePickerValue,SiteID, chartJsInstance){
     return returnTimeAndPowerArrays_VictronSolution_Daily(false,SiteID, datePickerValue).then(result => {
         if (result !== undefined){
         const [XArray, YArray, ZArray, dictOfXYZ] = result
         postMessageToChartJsUpdateTimeArray_GeneralSolution_Daily(chartJsInstance, XArray)
-        createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)
+        /*
+        * If you compare this function with 'findAndProcessData_DemoSolution_Daily', you will see that the line of code
+        * `createAndStoreCsvBlobInButton_GeneralSolution_Daily(CsvDownloadButtonElement,XArray, YArray, ZArray)`
+        * is missing.
+        * This is because the aforementioned function needs the ZArray (consumption) as an input, which,
+        * with Victron data is NOT shipped, but rather calculated inside the 'chartJsInstance'
+        * and then a message is sent from `chartJsInstance` to the main wix velo code, that saves the calculated
+        * standard consumption samples into a variable `globalZArray`.
+        * This is why the aforementioned line of code, in case of Victron data, is activated when onMessage from
+        * the child element in the main wix velo code.
+        * The relevant line of code there is:
+        *
+        *  if (command === "Update universal consumption array 'globalZArray'."){...}
+        *
+        * */
         return dictOfXYZ
         }
     })
